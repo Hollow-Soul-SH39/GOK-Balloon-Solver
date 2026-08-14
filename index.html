@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>GOK Balloon Puzzle Solver</title>
+<meta name="description" content="Scan a balloon-tray screenshot and solve the honeycomb pack. Runs entirely on your device — screenshots never leave your phone." />
+<meta name="theme-color" content="#0b1020" />
+<meta http-equiv="Cache-Control" content="no-cache" />
+
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="GOK Balloons" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+<style>
+  :root {
+    --bg: #0b1020;
+    --card: #12182c;
+    --line: #2a3348;
+    --text: #e8ecf4;
+    --muted: #8b95a8;
+    --accent: #e74c3c;
+    --ok: #2ecc71;
+    --btn: #3b82f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px 14px 48px;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 560px; margin-inline: auto;
+  }
+  h1 { text-align: center; font-size: 1.35rem; margin: 8px 0 16px; font-weight: 700; }
+  h2 { font-size: 0.95rem; color: #f07178; margin: 0 0 10px; }
+  .section {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 14px; margin-bottom: 14px;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; margin: 8px 0; }
+  .btn {
+    appearance: none; border: none; border-radius: 10px;
+    padding: 10px 14px; font-weight: 600; font-size: 0.9rem;
+    background: var(--btn); color: #fff; cursor: pointer;
+    text-decoration: none; display: inline-block;
+  }
+  .btn.secondary { background: #243056; }
+  .btn.ok { background: var(--ok); color: #0b1020; }
+  .btn.danger { background: #b91c1c; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  label.btn input { display: none; }
+  .preview-img { display: block; max-width: 160px; margin: 8px auto; border-radius: 10px; border: 1px solid var(--line); }
+  .help { font-size: 0.74rem; color: var(--muted); margin-top: 6px; line-height: 1.4; text-align: center; }
+  .status {
+    margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+    background: #0a0d18; border: 1px solid var(--line);
+    font-size: 0.82rem; color: #c5d0e6; text-align: center; line-height: 1.4;
+  }
+  .piece-list {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0;
+  }
+  .piece-chip {
+    background: #0a0d18; border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 4px; text-align: center; cursor: pointer;
+  }
+  .piece-chip.selected { border-color: #f07178; box-shadow: 0 0 0 1px #f07178; }
+  .piece-chip .color-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-bottom: 4px;
+  }
+  .piece-chip canvas { display: block; margin: 0 auto 4px; }
+  .piece-chip span.label { font-size: 0.72rem; color: var(--muted); }
+  #pieceCanvas, #gridCanvas, #scanCanvas {
+    display: block; margin: 8px auto; max-width: 100%;
+    background: #0a0d18; border-radius: 12px; border: 1px solid var(--line);
+  }
+  #solutionSection { display: none; }
+  #solutionSection.visible { display: block; }
+  input[type="color"] { width: 36px; height: 28px; border: none; background: none; padding: 0; }
+  footer.legal {
+    margin: 8px 4px 0; text-align: center; color: var(--muted);
+    font-size: 0.7rem; line-height: 1.5;
+  }
+  footer.legal a { color: #9aa8c4; }
+  .install-hint { display: none; margin-top: 10px; }
+  .install-hint.show { display: block; }
+
+</style>
+</head>
+<body>
+  <h1>GOK Balloon Puzzle Solver</h1>
+
+  <div class="section">
+    <h2>1. Upload screenshot</h2>
+    <img id="previewImg" class="preview-img" style="display:none" alt="screenshot preview">
+    <div class="controls">
+      <label class="btn secondary">Choose Screenshot<input type="file" id="fileInput" accept="image/*"></label>
+      <button class="btn ok" id="scanBtn" onclick="autoScan()" disabled>Auto-Scan Tray</button>
+    </div>
+    <canvas id="scanCanvas" width="480" height="160" style="display:none;width:100%;max-width:480px;margin:6px auto;"></canvas>
+  </div>
+
+  <div class="section">
+    <h2>2. Pieces</h2>
+    <div class="piece-list" id="pieceList"></div>
+    <div class="controls">
+      <button class="btn danger" id="deleteBtn" onclick="deleteSelected()" disabled>Delete Selected</button>
+      <button class="btn secondary" onclick="clearPieces()">Clear All</button>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:12px 0">
+    <p class="help" style="margin-bottom:8px">
+      You can manually edit the balloon pieces as needed, otherwise just click solve when the screenshot is uploaded.
+    </p>
+    <div class="controls" style="margin-bottom:8px;display:none">
+      <label style="font-size:0.8rem;color:var(--muted)">Board
+        <select id="layoutSelect" onchange="setLayout(this.value)" style="margin-left:6px;padding:6px 8px;border-radius:6px;background:#12182c;color:#eee;border:1px solid #2a3148">
+          <option value="pointy" selected>Columns 1-4-7-6-7-6-7-4-1 (game board)</option>
+          <option value="game">Rows 3-4-5-6-7-6-5-4-3 (alternate)</option>
+        </select>
+      </label>
+    </div>
+    <div class="controls">
+      <label>Color <input type="color" id="pieceColor" value="#e74c3c"></label>
+      <button class="btn secondary" onclick="startNewPiece()">Start Drawing</button>
+      <button class="btn secondary" onclick="finishPiece()">Save Piece</button>
+    </div>
+    <canvas id="pieceCanvas" width="380" height="340" style="cursor:crosshair;width:100%;max-width:100%;height:auto"></canvas>
+    <div class="controls" style="margin-top:12px">
+      <button class="btn" id="solveBtn" onclick="solve()">Solve Puzzle</button>
+    </div>
+    <div class="status" id="status">Upload a screenshot, scan the tray, then Solve.</div>
+  </div>
+
+  <div class="section" id="solutionSection">
+    <h2>3. Solution</h2>
+    <canvas id="gridCanvas" width="560" height="520" style="width:100%;height:auto;max-width:100%"></canvas>
+    <p class="help">Exact packing — no rotation applied.</p>
+    <div class="controls">
+      <button class="btn" id="saveSolBtn" onclick="saveSolutionImage()">Save Solution Image</button>
+      <button class="btn secondary" onclick="clearSolution()">Hide Solution</button>
+    </div>
+    <div id="savePreviewWrap" style="display:none;margin-top:12px;text-align:center">
+      <p class="help" id="saveHint">Long-press the image to save on phone, or use the download/share sheet.</p>
+      <img id="savePreviewImg" alt="Solution" style="max-width:100%;border-radius:12px;border:1px solid #2a3348;background:#0b1020"/>
+      <div class="controls" style="margin-top:8px">
+        <a class="btn" id="saveDownloadLink" download="balloon-solution.png" href="#">Download PNG</a>
+      </div>
+    </div>
+  </div>
+
+  <footer class="legal">
+    <p>Runs entirely on your device. Screenshots are never uploaded.</p>
+    <p class="install-hint" id="installHint">Add to Home Screen from your browser menu to install.</p>
+    <div class="controls" style="margin-top:10px">
+  
+      <button class="btn secondary" id="installBtn" style="display:none">Install app</button>
+    </div>
+  
+  </footer>
+
+<script>
+
+// ============================================================================
+// BOARD layouts (both sum to 43)
+// GAME: rows top→bottom 3-4-5-6-7-6-5-4-3 (matches Level screenshots)
+// POINTY: columns L→R 1-4-7-6-7-6-7-4-1 (singles on sides)
+// ============================================================================
+const LAYOUTS = {
+  game: {
+    mode: 'rows',
+    sizes: [3, 4, 5, 6, 7, 6, 5, 4, 3],
+    label: 'Rows 3-4-5-6-7-6-5-4-3 (43)'
+  },
+  pointy: {
+    mode: 'cols',
+    sizes: [1, 4, 7, 6, 7, 6, 7, 4, 1],
+    label: 'Columns 1-4-7-6-7-6-7-4-1 (43)'
+  }
+};
+let currentLayout = 'pointy';
+let dynamicLayout = null; // auto-generated hex when size != 43
+
+/** Perfect hex of given radius → 3*r*(r-1)+1 cells */
+function makeHexLayout(radius) {
+  const raw = [];
+  for (let q = -radius; q <= radius; q++) {
+    const r1 = Math.max(-radius, -q - radius);
+    const r2 = Math.min(radius, -q + radius);
+    for (let r = r1; r <= r2; r++) {
+      raw.push({ q, r });
+    }
+  }
+  // axial → odd-q offset, then normalize to >=0
+  let cells = raw.map(({ q, r }) => {
+    const col = q;
+    const row = r + ((q - (q & 1)) / 2);
+    return { col, row, q, r };
+  });
+  const minC = Math.min(...cells.map(c => c.col));
+  const minR = Math.min(...cells.map(c => c.row));
+  cells = cells.map(c => ({
+    col: c.col - minC,
+    row: c.row - minR,
+    q: c.q,
+    r: c.r
+  }));
+  return cells;
+}
+
+function allCellCoords() {
+  if (dynamicLayout) return dynamicLayout.cells;
+  const L = LAYOUTS[currentLayout];
+  const cells = [];
+  const maxS = Math.max(...L.sizes);
+  if (L.mode === 'rows') {
+    L.sizes.forEach((w, row) => {
+      const start = Math.floor((maxS - w) / 2);
+      for (let i = 0; i < w; i++) cells.push({ col: start + i, row });
+    });
+  } else {
+    L.sizes.forEach((h, col) => {
+      const start = Math.floor((maxS - h) / 2);
+      for (let i = 0; i < h; i++) cells.push({ col, row: start + i });
+    });
+  }
+  return cells;
+}
+
+let BOARD_CELLS = allCellCoords();
+let BOARD_SIZE = BOARD_CELLS.length;
+
+function offsetToCube(col, row) {
+  if (dynamicLayout) {
+    const cell = BOARD_CELLS.find(c => c.col === col && c.row === row);
+    if (cell && cell.q !== undefined) return { q: cell.q, r: cell.r };
+  }
+  if (LAYOUTS[currentLayout] && LAYOUTS[currentLayout].mode === 'rows') {
+    const q = col - (row - (row & 1)) / 2;
+    return { q, r: row };
+  }
+  const q = col;
+  const r = row - (col - (col & 1)) / 2;
+  return { q, r };
+}
+function cubeToOffset(q, r) {
+  if (dynamicLayout) {
+    const cell = BOARD_CELLS.find(c => c.q === q && c.r === r);
+    if (cell) return { col: cell.col, row: cell.row };
+  }
+  if (LAYOUTS[currentLayout] && LAYOUTS[currentLayout].mode === 'rows') {
+    return { col: q + (r - (r & 1)) / 2, row: r };
+  }
+  return { col: q, row: r + (q - (q & 1)) / 2 };
+}
+
+let CELL_W = 48, CELL_H = 42, RADIUS = 16;
+let ORIGIN_X = 48, ORIGIN_Y = 28;
+
+let gridCells = [];
+let pieces = [];
+let selectedIdx = -1;
+let sourceImage = null;
+let drawing = false;
+
+/** Auto-size board from balloon count (Level 101 = 91 → radius 6, etc.) */
+function setBoardFromBalloonCount(n) {
+  const known = { 19: 3, 37: 4, 43: null, 61: 5, 91: 6, 127: 7, 169: 8 };
+  if (n === 43) {
+    dynamicLayout = null;
+    currentLayout = 'pointy';
+  } else if (known[n] != null) {
+    const radius = known[n];
+    const cells = makeHexLayout(radius);
+    dynamicLayout = { cells, label: `Hex r${radius} (${cells.length} cells)`, radius };
+  } else {
+    let bestR = 5, bestDiff = 999;
+    for (let r = 3; r <= 12; r++) {
+      const c = 3 * r * (r - 1) + 1;
+      const d = Math.abs(c - n);
+      if (d < bestDiff) { bestDiff = d; bestR = r; }
+    }
+    const cells = makeHexLayout(bestR);
+    dynamicLayout = { cells, label: `Hex r${bestR} (${cells.length} cells)`, radius: bestR };
+  }
+  // Scale drawing so larger boards still fit the canvas
+  const maxDim = Math.max(
+    ...allCellCoords().map(c => c.col),
+    ...allCellCoords().map(c => c.row)
+  ) + 1;
+  const scale = Math.min(1, 12 / Math.max(maxDim, 1));
+  CELL_W = Math.max(18, Math.round(48 * scale));
+  CELL_H = Math.max(16, Math.round(42 * scale));
+  RADIUS = Math.max(7, Math.round(16 * scale));
+  rebuildBoardGeometry();
+  const label = dynamicLayout ? dynamicLayout.label : (LAYOUTS[currentLayout] && LAYOUTS[currentLayout].label) || (BOARD_SIZE + ' cells');
+  setStatus(`Board auto-sized → ${BOARD_SIZE} cells (${label}).`);
+}
+
+function rebuildBoardGeometry() {
+  BOARD_CELLS = allCellCoords();
+  BOARD_SIZE = BOARD_CELLS.length;
+  buildGrid();
+  initPieceEditor();
+  drawPieceEditor();
+  drawGrid();
+  renderPieceList();
+}
+
+function buildGrid() {
+  gridCells = [];
+  let id = 0;
+  const rowMode = !dynamicLayout && LAYOUTS[currentLayout] && LAYOUTS[currentLayout].mode === 'rows';
+  ORIGIN_X = 36;
+  ORIGIN_Y = 22;
+  BOARD_CELLS.forEach(({ col, row }) => {
+    let x, y;
+    if (rowMode) {
+      x = ORIGIN_X + col * CELL_W + ((row % 2 === 1) ? CELL_W / 2 : 0);
+      y = ORIGIN_Y + row * CELL_H;
+    } else {
+      x = ORIGIN_X + col * CELL_W;
+      y = ORIGIN_Y + row * CELL_H + ((col % 2 === 1) ? CELL_H / 2 : 0);
+    }
+    gridCells.push({ id: id++, x, y, row, col, color: null });
+  });
+}
+
+function setLayout(name) {
+  if (!LAYOUTS[name]) return;
+  dynamicLayout = null;
+  currentLayout = name;
+  CELL_W = 48; CELL_H = 42; RADIUS = 16;
+  const sel = document.getElementById('layoutSelect');
+  if (sel) sel.value = name;
+  rebuildBoardGeometry();
+  setStatus('Board: ' + LAYOUTS[name].label + ' (' + BOARD_SIZE + ' cells).');
+}
+
+function drawGrid() {
+  const canvas = document.getElementById('gridCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  gridCells.forEach(c => {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = c.color || '#1e2438';
+    ctx.fill();
+    ctx.strokeStyle = '#4a5570';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+}
+
+buildGrid();
+
+// ============================================================================
+// PIECE EDITOR — same cells as board
+// ============================================================================
+// ===== PIECE EDITOR – mirrors board layout =====
+const P_CELL_W = 30, P_CELL_H = 26, P_R = 10;
+const P_ORIGIN_X = 36, P_ORIGIN_Y = 22;
+let pieceCells = [];
+
+function initPieceEditor() {
+  pieceCells = BOARD_CELLS.map(({ col, row }) => ({ r: row, c: col, on: false }));
+}
+
+function cellPos(r, c) {
+  const rowMode = !dynamicLayout && LAYOUTS[currentLayout] && LAYOUTS[currentLayout].mode === 'rows';
+  if (rowMode) {
+    const x = P_ORIGIN_X + c * P_CELL_W + ((r % 2 === 1) ? P_CELL_W / 2 : 0);
+    const y = P_ORIGIN_Y + r * P_CELL_H;
+    return { x, y };
+  }
+  const x = P_ORIGIN_X + c * P_CELL_W;
+  const y = P_ORIGIN_Y + r * P_CELL_H + ((c % 2 === 1) ? P_CELL_H / 2 : 0);
+  return { x, y };
+}
+
+
+
+
+const pieceCanvas = document.getElementById('pieceCanvas');
+const pieceCtx = pieceCanvas.getContext('2d');
+
+function drawPieceEditor() {
+  const ctx = pieceCtx;
+  ctx.clearRect(0, 0, pieceCanvas.width, pieceCanvas.height);
+  ctx.fillStyle = '#0a0d18';
+  ctx.fillRect(0, 0, pieceCanvas.width, pieceCanvas.height);
+  const col = document.getElementById('pieceColor').value;
+  pieceCells.forEach(p => {
+    const { x, y } = cellPos(p.r, p.c);
+    ctx.beginPath();
+    ctx.arc(x, y, P_R, 0, Math.PI * 2);
+    ctx.fillStyle = p.on ? col : '#1e2438';
+    ctx.fill();
+    ctx.strokeStyle = p.on ? 'rgba(255,255,255,0.35)' : '#3a4560';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+}
+
+initPieceEditor();
+drawPieceEditor();
+
+function hitTestPiece(mx, my) {
+  for (const p of pieceCells) {
+    const { x, y } = cellPos(p.r, p.c);
+    if ((mx - x) ** 2 + (my - y) ** 2 < (P_R + 4) ** 2) return p;
+  }
+  return null;
+}
+
+pieceCanvas.addEventListener('click', e => {
+  const rect = pieceCanvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (pieceCanvas.width / rect.width);
+  const my = (e.clientY - rect.top) * (pieceCanvas.height / rect.height);
+  const p = hitTestPiece(mx, my);
+  if (p) { p.on = !p.on; drawPieceEditor(); }
+});
+
+function setStatus(m) { document.getElementById('status').textContent = m; }
+
+function startNewPiece() {
+  initPieceEditor();
+  drawPieceEditor();
+  selectedIdx = -1;
+  document.getElementById('deleteBtn').disabled = true;
+  drawing = true;
+  setStatus('Click cells to match one tray group exactly, then Save Piece. Shape will be locked as drawn.');
+}
+
+/**
+ * Save piece using cube-relative offsets so shape never warps with stagger parity.
+ */
+function finishPiece() {
+  const on = pieceCells.filter(p => p.on);
+  if (!on.length) { alert('Select at least one balloon'); return; }
+
+  // Cube coords — origin must be an actual piece cell (not independent minQ/minR)
+  const cubes = on.map(p => offsetToCube(p.c, p.r));
+  cubes.sort((a, b) => a.r - b.r || a.q - b.q);
+  const origin = cubes[0];
+  const cells = cubes.map(c => ({ dq: c.q - origin.q, dr: c.r - origin.r }));
+  cells.sort((a, b) => a.dr - b.dr || a.dq - b.dq);
+
+  const color = document.getElementById('pieceColor').value;
+  const piece = { color, cells, size: cells.length };
+
+  if (selectedIdx >= 0) {
+    pieces[selectedIdx] = piece;
+    selectedIdx = -1;
+  } else {
+    pieces.push(piece);
+  }
+
+  renderPieceList();
+  initPieceEditor();
+  drawPieceEditor();
+  document.getElementById('deleteBtn').disabled = true;
+  drawing = false;
+
+  const total = pieces.reduce((s, p) => s + p.size, 0);
+  setStatus(`Saved piece (${piece.size} balloons). ${pieces.length} pieces, ${total}/${BOARD_SIZE} balloons. ${total === BOARD_SIZE ? 'Ready to Solve!' : 'Continue adding pieces.'}`);
+}
+
+function deleteSelected() {
+  if (selectedIdx < 0) return;
+  pieces.splice(selectedIdx, 1);
+  selectedIdx = -1;
+  renderPieceList();
+  document.getElementById('deleteBtn').disabled = true;
+  initPieceEditor();
+  drawPieceEditor();
+  setStatus('Piece deleted.');
+}
+
+function clearPieces() {
+  pieces = [];
+  selectedIdx = -1;
+  renderPieceList();
+  document.getElementById('deleteBtn').disabled = true;
+  document.getElementById('solutionSection').classList.remove('visible');
+  initPieceEditor();
+  drawPieceEditor();
+  setStatus('All pieces cleared. Draw or scan to add pieces.');
+}
+
+/** Place a cube-relative piece onto the editor without changing shape */
+function loadPieceIntoEditor(piece) {
+  initPieceEditor();
+  // Find first valid anchor on the board for this cube shape
+  for (const anchor of gridCells) {
+    const base = offsetToCube(anchor.col, anchor.row);
+    const targets = [];
+    let ok = true;
+    for (const { dq, dr } of piece.cells) {
+      const { col, row } = cubeToOffset(base.q + dq, base.r + dr);
+      const pc = pieceCells.find(p => p.r === row && p.c === col);
+      if (!pc) { ok = false; break; }
+      targets.push(pc);
+    }
+    if (ok) {
+      targets.forEach(t => { t.on = true; });
+      return true;
+    }
+  }
+  return false;
+}
+
+function renderPieceList() {
+  const el = document.getElementById('pieceList');
+  el.innerHTML = '';
+  pieces.forEach((p, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'piece-chip' + (i === selectedIdx ? ' selected' : '');
+    chip.onclick = () => {
+      selectedIdx = i;
+      renderPieceList();
+      document.getElementById('deleteBtn').disabled = false;
+      document.getElementById('pieceColor').value = rgbToHex(p.color);
+      loadPieceIntoEditor(p);
+      drawPieceEditor();
+      setStatus(`Selected P${i + 1} (${p.size}). Delete or redraw & Save to replace. Shape is preserved exactly.`);
+    };
+    const dot = document.createElement('span');
+    dot.className = 'color-dot';
+    dot.style.background = p.color;
+    const label = document.createElement('span');
+    label.textContent = `P${i + 1} (${p.size})`;
+    const mini = document.createElement('canvas');
+    mini.width = 54; mini.height = 54;
+    drawMini(mini, p);
+    chip.append(dot, mini, label);
+    el.appendChild(chip);
+  });
+}
+
+function drawMini(canvas, piece) {
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0a0d18';
+  ctx.fillRect(0, 0, 54, 54);
+  if (!piece.cells || !piece.cells.length) return;
+  const rowMode = !dynamicLayout && LAYOUTS[currentLayout] && LAYOUTS[currentLayout].mode === 'rows';
+  const offsets = piece.cells.map(({ dq, dr }) => cubeToOffset(dq, dr));
+  const cols = offsets.map(o => o.col);
+  const rows = offsets.map(o => o.row);
+  const minC = Math.min(...cols), maxC = Math.max(...cols);
+  const minR = Math.min(...rows), maxR = Math.max(...rows);
+  const cw = 10, ch = 9;
+  const spanX = (maxC - minC) * cw + cw + (rowMode ? cw / 2 : 0);
+  const spanY = (maxR - minR) * ch + ch + (rowMode ? 0 : ch / 2);
+  const scale = Math.min(48 / Math.max(spanX, 1), 48 / Math.max(spanY, 1), 1.2);
+  const ox = (54 - spanX * scale) / 2 + cw * scale / 2;
+  const oy = (54 - spanY * scale) / 2 + ch * scale / 2;
+  offsets.forEach(({ col, row }) => {
+    let x, y;
+    if (rowMode) {
+      x = ox + (col - minC) * cw * scale + ((row % 2 === 1) ? cw * scale / 2 : 0);
+      y = oy + (row - minR) * ch * scale;
+    } else {
+      x = ox + (col - minC) * cw * scale;
+      y = oy + (row - minR) * ch * scale + ((col % 2 === 1) ? ch * scale / 2 : 0);
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(2.5, 3.6 * scale), 0, Math.PI * 2);
+    ctx.fillStyle = piece.color;
+    ctx.fill();
+  });
+}
+
+function rgbToHex(c) {
+  if (typeof c === 'string' && c.startsWith('#')) return c;
+  const m = String(c).match(/\d+/g);
+  if (!m || m.length < 3) return '#e74c3c';
+  return '#' + m.slice(0, 3).map(x => ('0' + Math.min(255, parseInt(x, 10)).toString(16)).slice(-2)).join('');
+}
+
+// ============================================================================
+// AUTO-SCAN — tray balloons only (bright / saturated colors)
+// ============================================================================
+function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d > 1e-6) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const s = max === 0 ? 0 : d / max;
+  return { h, s, v: max };
+}
+
+/** True only for bright balloon-like pixels (not brown basket, dark UI, clouds) */
+function isBalloonPixel(r, g, b) {
+  const { h, s, v } = rgbToHsv(r, g, b);
+  // Colored balloons (coins/pink filtered later in scan)
+  if (s < 0.28 || v < 0.28 || v > 0.985) return false;
+  // Near-gray / cloud
+  if (s < 0.35 && Math.abs(r - g) < 32 && Math.abs(g - b) < 32) return false;
+  // Dull wood only
+  if (h >= 18 && h <= 42 && s < 0.42 && v < 0.55) return false;
+  return true;
+}
+
+/** Bucket hue into coarse color families for grouping */
+function hueFamily(h) {
+  if (h < 15 || h >= 345) return 'red';
+  if (h < 40) return 'orange';
+  if (h < 70) return 'yellow';
+  if (h < 160) return 'green';
+  if (h < 200) return 'teal';
+  if (h < 260) return 'blue';
+  if (h < 310) return 'purple';
+  return 'pink';
+}
+
+
+function autoScan() {
+  if (!sourceImage) { setStatus('Upload a screenshot first.'); return; }
+  setStatus('Scanning tray…');
+
+  const sc = document.getElementById('scanCanvas');
+  const sctx = sc.getContext('2d', { willReadFrequently: true });
+
+  // Uniform-scale bottom tray (no squash)
+  const trayFrac = 0.37;
+  const trayHsrc = Math.floor(sourceImage.height * trayFrac);
+  const trayYsrc = Math.max(0, sourceImage.height - trayHsrc);
+  const sideCrop = Math.floor(sourceImage.width * 0.04);
+  const srcW = sourceImage.width - sideCrop * 2;
+  const srcH = trayHsrc;
+
+  const MAX_W = 1000, MAX_H = 480;
+  const scaleFit = Math.min(MAX_W / srcW, MAX_H / srcH);
+  const W = Math.round(srcW * scaleFit);
+  const H = Math.round(srcH * scaleFit);
+
+  sc.width = W; sc.height = H;
+  sc.style.display = 'block';
+  sc.style.width = '100%';
+  sc.style.height = 'auto';
+  sctx.fillStyle = '#0d1220';
+  sctx.fillRect(0, 0, W, H);
+  sctx.drawImage(sourceImage, sideCrop, trayYsrc, srcW, srcH, 0, 0, W, H);
+
+  const { data } = sctx.getImageData(0, 0, W, H);
+
+  function basketScore(x, y) {
+    const cx = W * 0.52, cy = H * 0.65;
+    return Math.hypot((x - cx) / (W * 0.30), (y - cy) / (H * 0.40));
+  }
+
+  const PAL_RGB = {
+    red: [220, 45, 40], yellow: [250, 210, 45], orange: [245, 150, 40],
+    copper: [165, 95, 50], blue: [45, 125, 220], teal: [50, 185, 180],
+    purple: [150, 90, 200], green: [55, 175, 85], pink: [240, 145, 175]
+  };
+
+  // Strict RGB/HSV rules — only vivid balloon paint, not sky/wood/coins
+  function classify(r, g, b, x, y) {
+    const bs = basketScore(x, y);
+    if (y < H * 0.02 || y > H * 0.92) return null;
+    if (x < W * 0.02 || x > W * 0.98) return null;
+
+    const hsv = rgbToHsv(r, g, b);
+    const { h, s, v } = hsv;
+    const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+
+    // --- Pink FIRST (pastel roses sit ON the coins; don't block by coin core) ---
+    // Soft pink: high R, elevated B, G between; hue magenta/rose; often low sat
+    if (bs < 1.40 && bs > 0.32) {
+      const pinkHue = (h >= 300 && h <= 360) || (h >= 0 && h <= 15) || (h >= 290 && h <= 300);
+      const pinkRGB = r > 150 && b > 100 && g > 70 && g < 230 && r > g + 5 && b > g - 30;
+      const pinkTone = v > 0.42 && v < 0.99 && s > 0.08 && s < 0.72;
+      // not vivid red (too saturated pure red)
+      const notRed = !(s > 0.55 && r > g + 50 && r > b + 50 && (h < 12 || h > 350));
+      if (pinkHue && pinkRGB && pinkTone && notRed && chroma > 25) {
+        return 'pink';
+      }
+      // alternate: pale rose with R≈B high, G lower
+      if (r > 170 && b > 130 && g > 100 && g < 210 && r > g + 15 && b > g + 5 &&
+          v > 0.55 && s > 0.08 && s < 0.55 && chroma > 28 && chroma < 140) {
+        if ((h >= 300 && h <= 360) || h <= 20) return 'pink';
+      }
+    }
+
+    // Deep coin pile (after pink): block wood/gold only
+    if (bs < 0.55) return null;
+
+    // Sky / fog / warm cloud wash (must not become copper or green)
+    if (s < 0.20 && v > 0.40) return null;
+    if (s < 0.28 && Math.abs(r - g) < 24 && Math.abs(g - b) < 24 && v > 0.38) return null;
+    // Brownish sky: low chroma, warm hue — NOT a balloon
+    // (leave room for copper: needs higher chroma)
+    if (chroma < 38 && s < 0.40 && v > 0.35 && h >= 10 && h <= 50) return null;
+    if (chroma < 48 && s < 0.45 && v > 0.48 && y > H * 0.75) return null;
+
+    // --- Teal ---
+    if (g > 85 && b > 90 && r < 150 && g > r + 8 && b > r + 8 &&
+        h >= 150 && h <= 200 && s > 0.24 && v > 0.28 && v < 0.96) {
+      return 'teal';
+    }
+
+    // --- Purple ---
+    if (h >= 250 && h <= 322 && s > 0.22 && v > 0.24 && v < 0.95 &&
+        r > 60 && b > 80 && g < 175) {
+      return 'purple';
+    }
+
+    // Deep basket: only pink/teal/purple
+    if (bs < 0.90) return null;
+
+    // --- Red ---
+    if (r > 130 && r > g + 30 && r > b + 30 && s > 0.32 && v > 0.30 &&
+        (h < 18 || h > 340)) return 'red';
+
+    // --- Yellow ---
+    if (r > 175 && g > 140 && b < 150 && r > b + 35 && g > b + 20 &&
+        h >= 30 && h <= 60 && s > 0.32 && v > 0.48) return 'yellow';
+
+    // --- Copper FIRST among warm tones (darker bronze, not bright orange) ---
+    if (bs > 0.85 && r > 85 && r < 215 && g > 40 && g < 155 && b < 115 &&
+        r > g + 8 && r > b + 22 && chroma >= 35 &&
+        h >= 8 && h <= 45 && s > 0.22 && s < 0.88 &&
+        v >= 0.22 && v < 0.78) {
+      // Prefer copper when not screamingly bright orange
+      if (v < 0.72 || r < 200 || s < 0.55) return 'copper';
+    }
+
+    // --- Orange (bright only) ---
+    if (r > 170 && g > 90 && g < 205 && b < 130 && r > g + 8 &&
+        h >= 10 && h <= 44 && s > 0.40 && v >= 0.58) return 'orange';
+
+    // --- Blue ---
+    if (b > 105 && b > r + 12 && b > g - 10 && h >= 190 && h <= 245 && s > 0.22 && v > 0.26)
+      return 'blue';
+
+    // --- Green ---
+    if (g > 100 && g > r + 12 && g > b && h >= 90 && h <= 160 &&
+        s > 0.22 && v > 0.24) return 'green';
+
+    return null;
+  }
+
+  // =====================================================================
+  // Blob + sat-peak pipeline (the scan that captured balloons well)
+  // Keep: pink-first classify, copper-vs-orange classify, pink recovery,
+  //       glint-aware sat, uniform tray crop.
+  // Drop: morph open/close, distance transform, circularity, copper score-map.
+  // =====================================================================
+  const labels = new Array(W * H);
+  const sat = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 4;
+      const id = classify(data[o], data[o + 1], data[o + 2], x, y);
+      labels[y * W + x] = id;
+      if (id) {
+        const hsv = rgbToHsv(data[o], data[o + 1], data[o + 2]);
+        let body = 1;
+        // crush only low-sat white glints — keep bright yellow/orange/red
+        if (hsv.v > 0.93 && hsv.s < 0.40) body = 0.12;
+        else if (hsv.v > 0.90 && hsv.s < 0.28) body = 0.25;
+        if (hsv.s > 0.45 && hsv.v > 0.35 && hsv.v < 0.95) body *= 1.1;
+        sat[y * W + x] = Math.max(0.05, hsv.s * body);
+      }
+    }
+  }
+
+  // Pink recovery on basket coins (unlabeled pastel only)
+  {
+    for (let y = Math.floor(H * 0.28); y < Math.floor(H * 0.72); y++) {
+      for (let x = Math.floor(W * 0.40); x < Math.floor(W * 0.78); x++) {
+        const i = y * W + x;
+        if (labels[i]) continue;
+        const o = i * 4;
+        const r = data[o], g = data[o + 1], b = data[o + 2];
+        const hsv = rgbToHsv(r, g, b);
+        const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+        const isPink =
+          r > 145 && b > 100 && g > 80 && g < 220 &&
+          r > g && b > g - 20 && chroma > 22 && chroma < 150 &&
+          hsv.v > 0.45 && hsv.v < 0.99 && hsv.s > 0.08 && hsv.s < 0.70 &&
+          ((hsv.h >= 290 && hsv.h <= 360) || hsv.h <= 18);
+        if (!isPink) continue;
+        if (r > 180 && g > 140 && b < 100) continue; // gold coins
+        labels[i] = 'pink';
+        sat[i] = Math.max(0.08, hsv.s * 0.9);
+      }
+    }
+  }
+
+  let balloonD = Math.max(28, Math.min(56, Math.round(W / 14.5)));
+
+  const visited = new Uint8Array(W * H);
+  const comps = [];
+
+  function flood(sx, sy, id) {
+    const stack = [[sx, sy]];
+    const pix = [];
+    visited[sy * W + sx] = 1;
+    let minX = sx, maxX = sx, minY = sy, maxY = sy;
+    while (stack.length) {
+      const [x, y] = stack.pop();
+      pix.push([x, y]);
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const ni = ny * W + nx;
+        if (visited[ni] || labels[ni] !== id) continue;
+        visited[ni] = 1;
+        stack.push([nx, ny]);
+      }
+    }
+    return { pix, minX, maxX, minY, maxY };
+  }
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (visited[i] || !labels[i]) continue;
+      const id = labels[i];
+      const f = flood(x, y, id);
+      if (f.pix.length < 28) continue;
+      if (f.pix.length > 12000) continue;
+      let sx = 0, sy = 0, wsum = 0;
+      f.pix.forEach(([px, py]) => {
+        const w = sat[py * W + px] || 0.1;
+        sx += px * w; sy += py * w; wsum += w;
+      });
+      comps.push({
+        id,
+        pixels: f.pix,
+        cx: sx / wsum,
+        cy: sy / wsum,
+        minX: f.minX, maxX: f.maxX, minY: f.minY, maxY: f.maxY,
+        area: f.pix.length
+      });
+    }
+  }
+
+  {
+    const areas = comps
+      .map(c => c.area)
+      .filter(a => a > 60 && a < 2500)
+      .sort((a, b) => a - b);
+    if (areas.length >= 3) {
+      const medA = areas[Math.floor(areas.length / 2)];
+      const est = 2 * Math.sqrt(medA / (Math.PI * 0.5));
+      if (est >= 26 && est <= 60) balloonD = Math.round(balloonD * 0.3 + est * 0.7);
+    }
+  }
+
+  const singleArea = Math.PI * (balloonD * 0.45) * (balloonD * 0.45);
+  const peaks = [];
+
+  function localMaximaInComp(comp) {
+    const { minX, maxX, minY, maxY, id } = comp;
+    const step = Math.max(2, Math.round(balloonD * 0.12));
+    const candidates = [];
+    for (let y = minY; y <= maxY; y += step) {
+      for (let x = minX; x <= maxX; x += step) {
+        if (labels[y * W + x] !== id) continue;
+        const s0 = sat[y * W + x];
+        if (s0 < 0.08) continue;
+        const win = Math.max(2, Math.round(balloonD * 0.2));
+        let ok = true, n = 0, sum = 0;
+        for (let dy = -win; dy <= win && ok; dy++) {
+          for (let dx = -win; dx <= win; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < minX || ny < minY || nx > maxX || ny > maxY) continue;
+            if (labels[ny * W + nx] !== id) continue;
+            n++; sum += sat[ny * W + nx];
+            if (sat[ny * W + nx] > s0 + 1e-6) ok = false;
+          }
+        }
+        if (!ok || n < 3) continue;
+        candidates.push({ x, y, id, score: sum / n });
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const kept = [];
+    const sep = balloonD * 0.62;
+    candidates.forEach(p => {
+      if (kept.some(q => Math.hypot(q.x - p.x, q.y - p.y) < sep)) return;
+      kept.push(p);
+    });
+    return kept;
+  }
+
+  function refinePeak(p) {
+    const R = balloonD * 0.42;
+    const R2 = R * R;
+    let wSum = 0, xSum = 0, ySum = 0, n = 0, maxSat = 0, chromaSum = 0;
+    for (let y = Math.max(0, Math.floor(p.y - R)); y <= Math.min(H - 1, Math.ceil(p.y + R)); y++) {
+      for (let x = Math.max(0, Math.floor(p.x - R)); x <= Math.min(W - 1, Math.ceil(p.x + R)); x++) {
+        const dx = x - p.x, dy = y - p.y;
+        if (dx * dx + dy * dy > R2) continue;
+        if (labels[y * W + x] !== p.id) continue;
+        const o = (y * W + x) * 4;
+        const r = data[o], g = data[o + 1], b = data[o + 2];
+        const hsv = rgbToHsv(r, g, b);
+        let w = sat[y * W + x];
+        if (hsv.v > 0.93 && hsv.s < 0.35) w *= 0.12;
+        wSum += w; xSum += x * w; ySum += y * w; n++;
+        if (hsv.s > maxSat) maxSat = hsv.s;
+        chromaSum += Math.max(r, g, b) - Math.min(r, g, b);
+      }
+    }
+    if (n < 10 || wSum < 1e-3) return null;
+    const meanChroma = chromaSum / n;
+    if (p.id !== 'pink' && meanChroma < 40 && maxSat < 0.35) return null;
+    if (p.id === 'pink' && meanChroma < 18) return null;
+    p.x = xSum / wSum;
+    p.y = ySum / wSum;
+    p.score = (wSum / n) * Math.min(1.3, meanChroma / 55);
+    p.meanChroma = meanChroma;
+    p.mass = n;
+    return p;
+  }
+
+  comps.forEach(comp => {
+    const bw = comp.maxX - comp.minX + 1;
+    const bh = comp.maxY - comp.minY + 1;
+    const maxDim = Math.max(bw, bh);
+    const expectN = Math.max(1, Math.round(comp.area / singleArea));
+
+    const single =
+      comp.area < singleArea * (comp.id === 'pink' || comp.id === 'copper' ? 2.2 : 1.85) &&
+      maxDim < balloonD * (comp.id === 'pink' || comp.id === 'copper' ? 2.0 : 1.7);
+
+    if (single) {
+      const p = refinePeak({ x: comp.cx, y: comp.cy, id: comp.id, score: 0.5 });
+      if (p) peaks.push(p);
+      return;
+    }
+
+    let locals = localMaximaInComp(comp);
+    if (locals.length < Math.min(expectN, 2) && expectN >= 2) {
+      const cols = Math.max(1, Math.round(bw / balloonD));
+      const rows = Math.max(1, Math.round(bh / balloonD));
+      for (let ry = 0; ry < rows; ry++) {
+        for (let cx = 0; cx < cols; cx++) {
+          const sx = comp.minX + (cx + 0.5) * bw / cols;
+          const sy = comp.minY + (ry + 0.5) * bh / rows;
+          let hit = 0, tsx = 0, tsy = 0;
+          const r0 = balloonD * 0.3;
+          for (let yy = Math.floor(sy - r0); yy <= sy + r0; yy++) {
+            for (let xx = Math.floor(sx - r0); xx <= sx + r0; xx++) {
+              if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+              if (labels[yy * W + xx] === comp.id) {
+                hit++; tsx += xx; tsy += yy;
+              }
+            }
+          }
+          if (hit < 8) continue;
+          locals.push({ x: tsx / hit, y: tsy / hit, id: comp.id, score: 0.35 });
+        }
+      }
+      locals.sort((a, b) => b.score - a.score);
+      const k2 = [];
+      locals.forEach(p => {
+        if (k2.some(q => Math.hypot(q.x - p.x, q.y - p.y) < balloonD * 0.62)) return;
+        k2.push(p);
+      });
+      locals = k2;
+    }
+
+    locals.forEach(p => {
+      const r = refinePeak(p);
+      if (r) peaks.push(r);
+    });
+  });
+
+  peaks.sort((a, b) => b.score - a.score);
+  {
+    const kept = [];
+    const sep = balloonD * 0.62;
+    peaks.forEach(p => {
+      if (kept.some(q => q.id === p.id && Math.hypot(q.x - p.x, q.y - p.y) < sep)) return;
+      if (kept.some(q => Math.hypot(q.x - p.x, q.y - p.y) < balloonD * 0.40)) return;
+      kept.push(p);
+    });
+    peaks.length = 0;
+    kept.forEach(p => peaks.push(p));
+  }
+
+  // Light junk drop only (no aggressive color-specific sky cuts)
+  {
+    const drop = new Set();
+    peaks.forEach((p, i) => {
+      let near = 0;
+      peaks.forEach((q, j) => {
+        if (i === j || p.id !== q.id) return;
+        if (Math.hypot(p.x - q.x, p.y - q.y) < balloonD * 2.3) near++;
+      });
+      if (near === 0 && p.y > H * 0.86 && (p.meanChroma || 0) < 55) drop.add(i);
+    });
+    for (let i = peaks.length - 1; i >= 0; i--) if (drop.has(i)) peaks.splice(i, 1);
+  }
+
+  {
+    const by = new Map();
+    peaks.forEach(p => {
+      if (!by.has(p.id)) by.set(p.id, []);
+      by.get(p.id).push(p);
+    });
+    const kept = [];
+    by.forEach(list => {
+      list.sort((a, b) => b.score - a.score);
+      kept.push(...list.slice(0, 8));
+    });
+    peaks.length = 0;
+    kept.forEach(p => peaks.push(p));
+  }
+
+  let units = peaks.map(p => ({
+    cx: p.x, cy: p.y,
+    minX: p.x - balloonD * 0.35, minY: p.y - balloonD * 0.35,
+    maxX: p.x + balloonD * 0.35, maxY: p.y + balloonD * 0.35,
+    paletteId: p.id,
+    color: `rgb(${PAL_RGB[p.id].join(',')})`,
+    score: p.score
+  }));
+
+  // Group: same color + close neighbors only
+  const pieceLink = balloonD * 1.85;
+  const parent = units.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const unite = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[a] = b; };
+  for (let i = 0; i < units.length; i++) {
+    for (let j = i + 1; j < units.length; j++) {
+      if (units[i].paletteId !== units[j].paletteId) continue;
+      if (Math.hypot(units[i].cx - units[j].cx, units[i].cy - units[j].cy) <= pieceLink)
+        unite(i, j);
+    }
+  }
+
+  // Gap-split
+  const rawG = new Map();
+  units.forEach((u, i) => {
+    const r = find(i);
+    if (!rawG.has(r)) rawG.set(r, []);
+    rawG.get(r).push(u);
+  });
+  const groups = [];
+  rawG.forEach(members => {
+    if (members.length <= 2) { groups.push(members); return; }
+    const m = members.length;
+    const p = Array.from({ length: m }, (_, i) => i);
+    const f = (a) => (p[a] === a ? a : (p[a] = f(p[a])));
+    const uu = (a, b) => { a = f(a); b = f(b); if (a !== b) p[a] = b; };
+    const nn = [];
+    for (let i = 0; i < m; i++) {
+      let best = Infinity;
+      for (let j = 0; j < m; j++) {
+        if (i === j) continue;
+        const d = Math.hypot(members[i].cx - members[j].cx, members[i].cy - members[j].cy);
+        if (d < best) best = d;
+      }
+      if (best < Infinity) nn.push(best);
+    }
+    nn.sort((a, b) => a - b);
+    const pitch = nn[Math.floor(nn.length / 2)] || balloonD;
+    const thr = pitch * 1.68;
+    for (let i = 0; i < m; i++)
+      for (let j = i + 1; j < m; j++)
+        if (Math.hypot(members[i].cx - members[j].cx, members[i].cy - members[j].cy) <= thr)
+          uu(i, j);
+    const buckets = new Map();
+    for (let i = 0; i < m; i++) {
+      const r = f(i);
+      if (!buckets.has(r)) buckets.set(r, []);
+      buckets.get(r).push(members[i]);
+    }
+    buckets.forEach(b => groups.push(b));
+  });
+
+  function shapeFromMembers(members) {
+    const n = members.length;
+    if (n < 2 || n > 14) return [];
+    // Cube dirs for odd-q board (col=q, +r → +row → DOWN on screen).
+    // Angles in SCREEN space (Y grows downward) — no Y flip (flip caused upside-down chips).
+    const HEX = [
+      { dq: 1,  dr: 0  }, // E / SE
+      { dq: 1,  dr: -1 }, // NE
+      { dq: 0,  dr: -1 }, // N (up)
+      { dq: -1, dr: 0  }, // W / NW
+      { dq: -1, dr: 1  }, // SW
+      { dq: 0,  dr: 1  }  // S (down)
+    ];
+    // Screen atan2(dy,dx): right=0, down=+90°, left=180, up=-90°
+    const ANGS = [30, -30, -90, -150, 150, 90].map(a => a * Math.PI / 180);
+    function adiff(a, b) {
+      let d = a - b;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      return Math.abs(d);
+    }
+    function dirIndex(dx, dyScreen) {
+      const ang = Math.atan2(dyScreen, dx);
+      let bi = 0, bd = Infinity;
+      ANGS.forEach((a, i) => { const d = adiff(ang, a); if (d < bd) { bd = d; bi = i; } });
+      return bi;
+    }
+    const nns = [];
+    for (let i = 0; i < n; i++) {
+      let best = Infinity;
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        const d = Math.hypot(members[i].cx - members[j].cx, members[i].cy - members[j].cy);
+        if (d < best) best = d;
+      }
+      if (best < Infinity) nns.push(best);
+    }
+    nns.sort((a, b) => a - b);
+    const pitch = nns[Math.floor(nns.length / 2)] || balloonD;
+
+    const edges = [];
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++)
+        edges.push({ i, j, d: Math.hypot(members[i].cx - members[j].cx, members[i].cy - members[j].cy) });
+    edges.sort((a, b) => a.d - b.d);
+    const par = Array.from({ length: n }, (_, i) => i);
+    const ff = (a) => (par[a] === a ? a : (par[a] = ff(par[a])));
+    const un = (a, b) => { a = ff(a); b = ff(b); if (a !== b) par[a] = b; };
+    const mst = [];
+    for (const e of edges) {
+      if (ff(e.i) === ff(e.j)) continue;
+      if (e.d > pitch * 2.1) continue;
+      un(e.i, e.j);
+      mst.push(e);
+      if (mst.length === n - 1) break;
+    }
+    const adj = Array.from({ length: n }, () => []);
+    mst.forEach(e => { adj[e.i].push(e.j); adj[e.j].push(e.i); });
+
+    let startI = 0;
+    for (let i = 1; i < n; i++) {
+      if (members[i].cx < members[startI].cx - 0.5) startI = i;
+      else if (Math.abs(members[i].cx - members[startI].cx) <= 0.5 && members[i].cy < members[startI].cy) startI = i;
+    }
+
+    const cube = new Array(n);
+    const placed = new Uint8Array(n);
+    const occ = new Map();
+    cube[startI] = { q: 0, r: 0 };
+    placed[startI] = 1;
+    occ.set('0,0', startI);
+    const queue = [startI];
+    while (queue.length) {
+      const u = queue.shift();
+      const kids = adj[u].filter(v => !placed[v]).sort((a, b) =>
+        Math.hypot(members[a].cx - members[u].cx, members[a].cy - members[u].cy) -
+        Math.hypot(members[b].cx - members[u].cx, members[b].cy - members[u].cy)
+      );
+      for (const v of kids) {
+        if (placed[v]) continue;
+        const dx = members[v].cx - members[u].cx;
+        const dy = members[v].cy - members[u].cy; // screen Y-down (matches board)
+        const di = dirIndex(dx, dy);
+        let done = false;
+        for (const oi of [0, 1, -1, 2, -2, 3].map(o => (di + o + 6) % 6)) {
+          const d = HEX[oi];
+          const nq = cube[u].q + d.dq, nr = cube[u].r + d.dr;
+          const key = nq + ',' + nr;
+          if (occ.has(key)) continue;
+          cube[v] = { q: nq, r: nr };
+          occ.set(key, v);
+          placed[v] = 1;
+          queue.push(v);
+          done = true;
+          break;
+        }
+        if (!done) {
+          for (const d of HEX) {
+            const key = (cube[u].q + d.dq) + ',' + (cube[u].r + d.dr);
+            if (occ.has(key)) continue;
+            cube[v] = { q: cube[u].q + d.dq, r: cube[u].r + d.dr };
+            occ.set(key, v);
+            placed[v] = 1;
+            queue.push(v);
+            break;
+          }
+        }
+      }
+    }
+    for (let v = 0; v < n; v++) {
+      if (placed[v]) continue;
+      let bestU = -1, bestD = Infinity;
+      for (let u = 0; u < n; u++) {
+        if (!placed[u]) continue;
+        const d = Math.hypot(members[v].cx - members[u].cx, members[v].cy - members[u].cy);
+        if (d < bestD) { bestD = d; bestU = u; }
+      }
+      if (bestU < 0) continue;
+      const dx = members[v].cx - members[bestU].cx;
+      const dy = members[v].cy - members[bestU].cy;
+      const di = dirIndex(dx, dy);
+      for (const oi of [0, 1, -1, 2, -2, 3].map(o => (di + o + 6) % 6)) {
+        const d = HEX[oi];
+        const key = (cube[bestU].q + d.dq) + ',' + (cube[bestU].r + d.dr);
+        if (occ.has(key)) continue;
+        cube[v] = { q: cube[bestU].q + d.dq, r: cube[bestU].r + d.dr };
+        occ.set(key, v);
+        placed[v] = 1;
+        break;
+      }
+    }
+
+    const cells = [];
+    for (let i = 0; i < n; i++) if (cube[i]) cells.push({ dq: cube[i].q, dr: cube[i].r });
+    if (cells.length < 2) return [];
+    const seen = new Set();
+    const uniq = [];
+    cells.forEach(c => {
+      const k = c.dq + ',' + c.dr;
+      if (!seen.has(k)) { seen.add(k); uniq.push(c); }
+    });
+    uniq.sort((a, b) => a.dr - b.dr || a.dq - b.dq);
+    const o0 = uniq[0];
+    return uniq.map(c => ({ dq: c.dq - o0.dq, dr: c.dr - o0.dr }));
+  }
+
+  let detected = [];
+  groups.forEach(members => {
+    if (members.length < 2 || members.length > 14) return;
+    const cells = shapeFromMembers(members);
+    if (cells.length < 2) return;
+    detected.push({
+      color: members[0].color,
+      cells,
+      size: cells.length,
+      paletteId: members[0].paletteId,
+      _members: members
+    });
+  });
+  detected.sort((a, b) => {
+    const ax = a._members.reduce((s, m) => s + m.cx, 0) / a._members.length;
+    const bx = b._members.reduce((s, m) => s + m.cx, 0) / b._members.length;
+    return ax - bx;
+  });
+
+  // Draw: rings + hull only on piece members
+  function convexHull(points) {
+    if (points.length <= 2) return points.slice();
+    const pts = points.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+    const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const lower = [];
+    for (const p of pts) {
+      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+      lower.push(p);
+    }
+    const upper = [];
+    for (let i = pts.length - 1; i >= 0; i--) {
+      const p = pts[i];
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+      upper.push(p);
+    }
+    upper.pop(); lower.pop();
+    return lower.concat(upper);
+  }
+
+  const pad = balloonD * 0.46;
+  sctx.strokeStyle = 'rgba(46,204,113,0.95)';
+  sctx.fillStyle = 'rgba(46,204,113,0.10)';
+  sctx.lineWidth = 2;
+  detected.forEach(p => {
+    p._members.forEach(m => {
+      sctx.beginPath();
+      sctx.arc(m.cx, m.cy, pad, 0, Math.PI * 2);
+      sctx.stroke();
+    });
+    if (p._members.length >= 2) {
+      const hull = convexHull(p._members.map(m => ({ x: m.cx, y: m.cy })));
+      let cx = 0, cy = 0;
+      hull.forEach(pt => { cx += pt.x; cy += pt.y; });
+      cx /= hull.length; cy /= hull.length;
+      const exp = hull.map(pt => {
+        const dx = pt.x - cx, dy = pt.y - cy;
+        const L = Math.hypot(dx, dy) || 1;
+        return { x: pt.x + dx / L * pad * 0.75, y: pt.y + dy / L * pad * 0.75 };
+      });
+      sctx.beginPath();
+      sctx.moveTo(exp[0].x, exp[0].y);
+      for (let i = 1; i < exp.length; i++) sctx.lineTo(exp[i].x, exp[i].y);
+      sctx.closePath();
+      sctx.fill();
+      sctx.stroke();
+    }
+  });
+
+  // Status text only (no size box covering tray corner)
+  sctx.fillStyle = 'rgba(0,0,0,0.45)';
+  sctx.fillRect(6, 6, 168, 18);
+  sctx.fillStyle = 'rgba(255,255,255,0.95)';
+  sctx.font = '11px system-ui, sans-serif';
+  sctx.fillText(units.length + ' balloons · ' + balloonD + 'px', 10, 19);
+
+  sctx.strokeStyle = 'rgba(231,76,60,0.4)';
+  sctx.setLineDash([5, 4]);
+  sctx.beginPath();
+  sctx.ellipse(W * 0.52, H * 0.65, W * 0.30 * 0.72, H * 0.40 * 0.72, 0, 0, Math.PI * 2);
+  sctx.stroke();
+  sctx.setLineDash([]);
+
+  // White dots only on accepted balloons (in a piece)
+  const inPiece = new Set();
+  detected.forEach(p => p._members.forEach(m => inPiece.add(m)));
+  (inPiece.size ? [...inPiece] : units).forEach(m => {
+    sctx.beginPath();
+    sctx.arc(m.cx, m.cy, 3, 0, Math.PI * 2);
+    sctx.fillStyle = '#fff';
+    sctx.fill();
+    sctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    sctx.lineWidth = 1;
+    sctx.stroke();
+  });
+
+  // If over-filled vs board, shrink weakest overcounted pieces by dropping lowest-score members
+  let totalCells = detected.reduce((s, p) => s + p.size, 0);
+  if (totalCells > BOARD_SIZE && detected.length) {
+    // Rebuild from units with stricter same-color NMS once
+    // Prefer dropping lowest-score unit that belongs to largest piece
+    const unitScore = new Map();
+    units.forEach(u => unitScore.set(u, u.score || 0));
+    while (totalCells > BOARD_SIZE) {
+      // find largest piece
+      detected.sort((a, b) => b.size - a.size);
+      const big = detected[0];
+      if (!big || big.size <= 2) break;
+      // drop weakest member
+      big._members.sort((a, b) => (a.score || 0) - (b.score || 0));
+      big._members.shift();
+      if (big._members.length < 2) {
+        detected.shift();
+      } else {
+        const cells = shapeFromMembers(big._members);
+        if (cells.length < 2) { detected.shift(); }
+        else {
+          big.cells = cells;
+          big.size = cells.length;
+        }
+      }
+      totalCells = detected.reduce((s, p) => s + (p.size || 0), 0);
+      if (detected.length === 0) break;
+    }
+  }
+
+  pieces = detected.map(p => ({
+    color: p.color,
+    cells: p.cells,
+    size: p.size,
+    paletteId: p.paletteId
+  }));
+  selectedIdx = -1;
+  renderPieceList();
+  document.getElementById('deleteBtn').disabled = true;
+
+  const total = pieces.reduce((s, p) => s + p.size, 0);
+  const names = pieces.map(p => p.paletteId + ':' + p.size).join(', ');
+  // Auto-detect honeycomb size from balloon count
+  if (total > 0 && total !== BOARD_SIZE) {
+    setBoardFromBalloonCount(total);
+  }
+
+
+  if (!pieces.length) {
+    setStatus('No pieces found. Use a full-level screenshot with the tray visible, or draw pieces manually.');
+    return;
+  }
+  if (total === BOARD_SIZE) {
+    setStatus(`Scan OK · ${pieces.length} pieces · ${total}/${BOARD_SIZE} ✓ [${names}]. Tap Solve.`);
+  } else {
+    setStatus(
+      `Scan · ${units.length} balloons · ${pieces.length} pieces · ${total}/${BOARD_SIZE} [${names}]. ` +
+      `Fix only chips that don’t match green rings, then Solve.`
+    );
+  }
+}
+
+// SOLVER — cube-relative placements, no rotation
+// ============================================================================
+function enumeratePlacements(piece) {
+  const opts = [];
+  for (const anchor of gridCells) {
+    const base = offsetToCube(anchor.col, anchor.row);
+    const indices = [];
+    let ok = true;
+    for (const { dq, dr } of piece.cells) {
+      const { col, row } = cubeToOffset(base.q + dq, base.r + dr);
+      const found = gridCells.findIndex(c => c.col === col && c.row === row);
+      if (found === -1) { ok = false; break; }
+      indices.push(found);
+    }
+    if (ok && new Set(indices).size === indices.length) opts.push(indices);
+  }
+  return opts;
+}
+
+function pack() {
+  const N = gridCells.length;
+  const occ = new Array(N).fill(false);
+  const allOpts = pieces.map(piece => ({
+    color: piece.color,
+    size: piece.size,
+    opts: enumeratePlacements(piece)
+  }));
+  window._packDiag = allOpts.map((o, i) => ({ i: i + 1, size: o.size, placements: o.opts.length }));
+
+  // Most constrained first
+  const order = allOpts.map((_, i) => i).sort((a, b) => allOpts[a].opts.length - allOpts[b].opts.length);
+  const placement = [];
+
+  function bt(k) {
+    if (k === order.length) return true;
+    const p = allOpts[order[k]];
+    for (const indices of p.opts) {
+      if (indices.every(i => !occ[i])) {
+        indices.forEach(i => { occ[i] = true; });
+        placement.push({ color: p.color, indices });
+        if (bt(k + 1)) return true;
+        placement.pop();
+        indices.forEach(i => { occ[i] = false; });
+      }
+    }
+    return false;
+  }
+  return bt(0) ? placement : null;
+}
+
+function solve() {
+  if (!pieces.length) {
+    setStatus('No pieces yet. Draw each group on the honeycomb and Save, or run Auto-Scan.');
+    return;
+  }
+  const total = pieces.reduce((s, p) => s + p.size, 0);
+  if (total !== BOARD_SIZE) {
+    setStatus(`Count mismatch: board has ${BOARD_SIZE} circles, pieces total ${total}. Add or remove balloons until they match.`);
+    return;
+  }
+  setStatus('Solving…');
+  document.getElementById('solveBtn').disabled = true;
+  setTimeout(() => {
+    const result = pack();
+    document.getElementById('solveBtn').disabled = false;
+    if (result) {
+      gridCells.forEach(c => { c.color = null; });
+      result.forEach(pl => pl.indices.forEach(i => { gridCells[i].color = pl.color; }));
+      drawGrid();
+      document.getElementById('solutionSection').classList.add('visible');
+      document.getElementById('solutionSection').scrollIntoView({ behavior: 'smooth' });
+      setStatus('Solution found. Shapes placed exactly as scanned/drawn — no rotation or flip.');
+    } else {
+      const diag = window._packDiag || [];
+      const zero = diag.filter(d => d.placements === 0);
+      const detail = diag.map(d => `P${d.i}:${d.placements}`).join(', ');
+      if (zero.length) {
+        setStatus(`These pieces cannot sit on the board at all: ${zero.map(d => 'P' + d.i).join(', ')}. Redraw them on the honeycomb to match the tray. (${detail})`);
+      } else {
+        setStatus(`No complete packing — pieces fit alone but not together. One or more shapes still differ from the tray. (${detail})`);
+      }
+    }
+  }, 20);
+}
+
+function saveSolutionImage() {
+  const filled = gridCells.some(c => c.color);
+  if (!filled) {
+    setStatus('Solve the puzzle first, then save the solution image.');
+    return;
+  }
+
+  const W = 900, H = 720;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#12182a');
+  grad.addColorStop(1, '#0b1020');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#f0f2f8';
+  ctx.font = 'bold 32px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('GOK Balloon Puzzle Solution', W / 2, 48);
+  ctx.font = '16px system-ui, sans-serif';
+  ctx.fillStyle = '#9aa3b8';
+  ctx.fillText((dynamicLayout ? dynamicLayout.label : (LAYOUTS[currentLayout] && LAYOUTS[currentLayout].label) || '') + ' · ' + BOARD_SIZE + ' cells', W / 2, 78);
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  gridCells.forEach(cell => {
+    minX = Math.min(minX, cell.x); minY = Math.min(minY, cell.y);
+    maxX = Math.max(maxX, cell.x); maxY = Math.max(maxY, cell.y);
+  });
+  const pad = 70;
+  const boardW = maxX - minX || 1;
+  const boardH = maxY - minY || 1;
+  const availW = W - pad * 2;
+  const availH = H - 140 - 40;
+  const scale = Math.min(availW / boardW, availH / boardH) * 0.92;
+  const ox = W / 2 - ((minX + maxX) / 2) * scale;
+  const oy = 120 + availH / 2 - ((minY + maxY) / 2) * scale;
+  const r = Math.max(10, RADIUS * scale * 0.95);
+
+  gridCells.forEach(cell => {
+    const x = cell.x * scale + ox;
+    const y = cell.y * scale + oy;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = cell.color || '#1e2438';
+    ctx.fill();
+    ctx.strokeStyle = cell.color ? 'rgba(255,255,255,0.25)' : '#4a5570';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+
+  const colors = [];
+  gridCells.forEach(cell => {
+    if (cell.color && !colors.includes(cell.color)) colors.push(cell.color);
+  });
+  const legendY = H - 36;
+  ctx.font = '13px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#9aa3b8';
+  ctx.fillText('Pieces:', 40, legendY);
+  let lx = 100;
+  colors.forEach(col => {
+    ctx.beginPath();
+    ctx.arc(lx, legendY - 4, 8, 0, Math.PI * 2);
+    ctx.fillStyle = col;
+    ctx.fill();
+    lx += 28;
+  });
+  ctx.fillStyle = '#6b7388';
+  ctx.textAlign = 'right';
+  ctx.fillText('GOK Balloon Puzzle Solver', W - 40, legendY);
+
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const filename = 'balloon-solution-' + stamp + '.png';
+
+  function showPreview(dataUrl) {
+    const wrap = document.getElementById('savePreviewWrap');
+    const img = document.getElementById('savePreviewImg');
+    const link = document.getElementById('saveDownloadLink');
+    const hint = document.getElementById('saveHint');
+    img.src = dataUrl;
+    link.href = dataUrl;
+    link.download = filename;
+    wrap.style.display = 'block';
+    const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
+    hint.textContent = isTouch
+      ? 'Phone: long-press the image → Save Image. Or tap Download PNG / Share.'
+      : 'Computer: click Download PNG, or right-click the image → Save image as…';
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  c.toBlob(async (blob) => {
+    if (!blob) {
+      const dataUrl = c.toDataURL('image/png');
+      showPreview(dataUrl);
+      setStatus('Solution image ready — use Download or long-press to save.');
+      return;
+    }
+    const dataUrl = URL.createObjectURL(blob);
+    showPreview(dataUrl);
+    // keep download link as object URL
+    document.getElementById('saveDownloadLink').href = dataUrl;
+
+    // Mobile share sheet when available
+    const file = new File([blob], filename, { type: 'image/png' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'GOK Balloon Puzzle Solution',
+          text: 'Exact packing solution'
+        });
+        setStatus('Shared / saved via system share sheet.');
+        return;
+      } catch (err) {
+        // user cancelled or share failed — preview still available
+      }
+    }
+
+    // Desktop: trigger download
+    const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
+    if (!isTouch) {
+      const a = document.createElement('a');
+      a.download = filename;
+      a.href = dataUrl;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setStatus('Solution PNG download started. Image also shown below if you need it again.');
+    } else {
+      setStatus('Solution ready. Long-press the image to save, or tap Download PNG / use Share.');
+    }
+  }, 'image/png');
+}
+
+function clearSolution() {
+  gridCells.forEach(c => { c.color = null; });
+  drawGrid();
+  document.getElementById('solutionSection').classList.remove('visible');
+  setStatus('Solution hidden.');
+}
+
+// Upload
+document.getElementById('fileInput').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      sourceImage = img;
+      const prev = document.getElementById('previewImg');
+      prev.src = ev.target.result;
+      prev.style.display = 'block';
+      document.getElementById('scanBtn').disabled = false;
+      setStatus('Screenshot loaded. Auto-Scan the tray, or ignore it and draw pieces manually.');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(f);
+});
+
+// Initial paint of solution grid (hidden)
+drawGrid();
+
+// PWA: service worker + install prompt
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((r) => r.update());
+  });
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.style.display = 'inline-block';
+});
+const installBtn = document.getElementById('installBtn');
+if (installBtn) {
+  installBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    installBtn.style.display = 'none';
+  });
+}
+const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+const hint = document.getElementById('installHint');
+if (hint && !standalone) hint.classList.add('show');
+
+</script>
+
+</body>
+</html>
