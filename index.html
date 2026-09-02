@@ -604,7 +604,7 @@ function showScanError(msg) {
   if (empty) {
     empty.style.display = 'block';
     empty.classList.add('scan-error');
-    empty.textContent = msg;
+    empty.textContent = 'No balloons found. You can still draw or edit pieces below.';
   }
   const banner = document.getElementById('scanError');
   if (banner) {
