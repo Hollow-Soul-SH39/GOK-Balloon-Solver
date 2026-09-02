@@ -68,24 +68,34 @@ async function wait(page, fn, timeout) {
   await page.goto('http://127.0.0.1:' + PORT + '/index.html', { waitUntil: 'networkidle0' });
 
   const version = await page.$eval('#scanHint', el => el.textContent);
-  assert.ok(version.includes('v105'), 'expected v105 copy, got ' + version);
+  assert.ok(version.includes('v106'), 'expected v106 copy, got ' + version);
   assert.ok(version.toLowerCase().includes('solves immediately') || version.toLowerCase().includes('clean scan'), version);
 
-  const gate = await page.evaluate(() => {
-    const g = window.GokBoardGate;
+  const colors = await page.evaluate(() => {
+    const c = window.GokBalloonColor;
     return {
-      l65: g.classifyKnownBoard({ honeyCount: 43, honeyCols: 9, trayTotal: 43 }),
-      l101: g.classifyKnownBoard({ honeyCount: 91, honeyCols: 13, trayTotal: 91 }),
-      l103: g.classifyKnownBoard({ honeyCount: 91, honeyCols: 13, trayTotal: 91 }),
-      l103trap: g.classifyKnownBoard({ honeyCount: 96, honeyCols: 14.7, honeyRows: 11, trayTotal: 91 }),
-      l103n125: g.classifyKnownBoard({ honeyCount: 125, honeyCols: 14.0, trayTotal: 91 })
+      copper: c.simpleColorId(168, 88, 42),
+      wood: c.simpleColorId(150, 108, 62),
+      green: c.simpleColorId(48, 168, 72),
+      silver: c.simpleColorId(176, 180, 186),
+      yellow: c.simpleColorId(250, 210, 45),
+      coins: c.simpleColorId(210, 170, 70),
+      l65: window.GokBoardGate.classifyKnownBoard({ honeyCount: 43, honeyCols: 9, trayTotal: 43 }),
+      l101: window.GokBoardGate.classifyKnownBoard({ honeyCount: 91, honeyCols: 13, trayTotal: 91 }),
+      l103: window.GokBoardGate.classifyKnownBoard({ honeyCount: 96, honeyCols: 14.7, honeyRows: 11, trayTotal: 91 }),
+      l103n125: window.GokBoardGate.classifyKnownBoard({ honeyCount: 125, honeyCols: 14.0, trayTotal: 91 })
     };
   });
-  assert.strictEqual(gate.l65, 43, 'L65 size gate');
-  assert.strictEqual(gate.l101, 91, 'L101 size gate');
-  assert.strictEqual(gate.l103, 91, 'L103 size gate');
-  assert.strictEqual(gate.l103trap, 91, 'L103 must not become 157');
-  assert.strictEqual(gate.l103n125, 91, 'L103 overcount must not become 157');
+  assert.strictEqual(colors.copper, 'copper');
+  assert.strictEqual(colors.wood, null);
+  assert.strictEqual(colors.green, 'green');
+  assert.strictEqual(colors.silver, 'silver');
+  assert.strictEqual(colors.yellow, 'yellow');
+  assert.strictEqual(colors.coins, null);
+  assert.strictEqual(colors.l65, 43);
+  assert.strictEqual(colors.l101, 91);
+  assert.strictEqual(colors.l103, 91);
+  assert.strictEqual(colors.l103n125, 91);
 
   const editorOn = await page.$eval('#pieceCanvas', el => !!el);
   assert.ok(editorOn, 'piece editor canvas missing');
