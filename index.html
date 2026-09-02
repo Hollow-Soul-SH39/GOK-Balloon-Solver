@@ -673,10 +673,12 @@ function finishScan() {
     return false;
   }
   if (total === BOARD_SIZE) {
+    clearScanError();
     setStatus('Scan complete — ' + pieces.length + ' pieces, ' + total + ' balloons. Solving…');
     solve({ fromScan: true });
     return true;
   }
+  clearScanError();
   setStatus('Scan found ' + pieces.length + ' pieces (' + total + '/' + BOARD_SIZE + ' balloons). Fix any chips that look off, then Solve.');
   return false;
 }
@@ -741,6 +743,7 @@ function deleteSelected() {
 function clearPieces() {
   pieces = [];
   selectedIdx = -1;
+  clearScanError();
   renderPieceList();
   document.getElementById('deleteBtn').disabled = true;
   document.getElementById('solutionSection').classList.remove('visible');
