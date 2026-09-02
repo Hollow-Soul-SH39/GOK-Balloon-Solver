@@ -87,6 +87,16 @@
     background: #0a0d18; border: 1px solid var(--line);
     font-size: 0.82rem; color: #c5d0e6; text-align: center; line-height: 1.4;
   }
+  .status.error {
+    background: #3a1014; border-color: #e74c3c; color: #ffd4d4; font-weight: 650;
+  }
+  .scan-error-banner {
+    display: none; margin-top: 10px; padding: 12px 14px; border-radius: 10px;
+    background: #3a1014; border: 1px solid #e74c3c; color: #ffd4d4;
+    font-size: 0.88rem; font-weight: 650; text-align: center; line-height: 1.45;
+  }
+  .scan-error-banner.show { display: block; }
+  #pieceEmpty.scan-error { color: #ffb4b8; font-weight: 650; }
   .piece-list {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0;
   }
@@ -153,7 +163,8 @@
     <div class="controls">
       <label class="btn secondary">Choose Screenshot<input type="file" id="fileInput" accept="image/*"></label>
     </div>
-    <p class="help" id="scanHint" style="margin:8px 0 0">Upload a screenshot. Scanning runs automatically — you can still edit pieces if something looks off. <span style="opacity:.55">v104</span></p>
+    <p class="help" id="scanHint" style="margin:8px 0 0">Upload a screenshot. A clean scan solves immediately — you can still edit pieces if something looks off. <span style="opacity:.55">v105</span></p>
+    <div id="scanError" class="scan-error-banner" role="alert"></div>
     <canvas id="scanCanvas" width="480" height="160" hidden></canvas>
   </div>
 
@@ -197,7 +208,7 @@
     <div class="controls" style="margin-top:12px">
       <button class="btn" id="solveBtn" onclick="solve()">Solve Puzzle</button>
     </div>
-    <div class="status" id="status">Upload a screenshot, scan the tray, then Solve.</div>
+    <div class="status" id="status">Upload a screenshot. A clean scan solves automatically.</div>
   </div>
 
   <div class="section" id="solutionSection">
@@ -225,6 +236,7 @@
   
   </footer>
 
+<script src="board-gate.js"></script>
 <script>
 
 // ============================================================================
@@ -378,38 +390,30 @@ let pieces = [];
 let selectedIdx = -1;
 let sourceImage = null;
 let drawing = false;
+let boardSizeBeforeScan = 91;
+let lastHoneyBox = null;
+let lastHoneyCount = 0;
+let lastHoneyCols = 0;
 
-/** Auto-size board from balloon count (Level 101 = 91 → radius 6, etc.) */
+/** Auto-size board from balloon count (L65 = 43, L101/L103 = 91). Never invent a hex. */
 function setBoardFromBalloonCount(n) {
-  let bestKey = null, bestDiff = 999;
-  for (const k of Object.keys(COLUMN_BOARDS)) {
-    const d = Math.abs(Number(k) - n);
-    if (d < bestDiff) { bestDiff = d; bestKey = Number(k); }
-  }
-  if (bestKey != null && bestDiff <= 25) {
-    applyColumnBoard(COLUMN_BOARDS[bestKey].sizes);
+  const classified = classifyBoardFromScan({ trayTotal: n, honeyCount: lastHoneyCount, honeyCols: lastHoneyCols });
+  if (classified && COLUMN_BOARDS[classified]) {
+    applyColumnBoard(COLUMN_BOARDS[classified].sizes);
     setStatus('Board set to ' + BOARD_SIZE + ' cells.');
     return;
   }
-  let bestR = 5, hexDiff = 999;
-  for (let r = 3; r <= 12; r++) {
-    const c = 3 * r * (r - 1) + 1;
-    const d = Math.abs(c - n);
-    if (d < hexDiff) { hexDiff = d; bestR = r; }
+  let bestKey = null, bestDiff = 999;
+  const keys = [43, 91];
+  if (n >= 124) keys.push(157);
+  for (const k of keys) {
+    const d = Math.abs(k - n);
+    if (d < bestDiff) { bestDiff = d; bestKey = k; }
   }
-  const cells = makeHexLayout(bestR);
-  dynamicLayout = { cells, label: `Hex r${bestR} (${cells.length} cells)`, radius: bestR };
-  // Scale drawing so larger boards still fit the canvas
-  const maxC = Math.max(...allCellCoords().map(c => c.col)) + 1;
-  const maxR = Math.max(...allCellCoords().map(c => c.row)) + 1;
-  const ratio = Math.sqrt(3) / 2;
-  const scale = Math.min(1, 11 / Math.max(maxC, maxR));
-  CELL_H = Math.max(16, Math.round(42 * scale));
-  CELL_W = Math.max(14, Math.round(CELL_H * ratio));
-  RADIUS = Math.max(6, Math.round(CELL_H * 0.42));
-  rebuildBoardGeometry();
-  const label = dynamicLayout ? dynamicLayout.label : (LAYOUTS[currentLayout] && LAYOUTS[currentLayout].label) || (BOARD_SIZE + ' cells');
-  setStatus('Board set to ' + BOARD_SIZE + ' cells.');
+  if (bestKey != null && bestDiff <= 25 && COLUMN_BOARDS[bestKey]) {
+    applyColumnBoard(COLUMN_BOARDS[bestKey].sizes);
+    setStatus('Board set to ' + BOARD_SIZE + ' cells.');
+  }
 }
 
 function rebuildBoardGeometry() {
@@ -572,7 +576,112 @@ pieceCanvas.addEventListener('click', e => {
   if (p) { p.on = !p.on; drawPieceEditor(); }
 });
 
-function setStatus(m) { document.getElementById('status').textContent = m; }
+function setStatus(m, kind) {
+  const el = document.getElementById('status');
+  if (!el) return;
+  el.textContent = m;
+  el.classList.toggle('error', kind === 'error');
+}
+
+function hideSolutionSilent() {
+  if (window._solveTimer) {
+    clearTimeout(window._solveTimer);
+    window._solveTimer = null;
+  }
+  gridCells.forEach(c => { c.color = null; });
+  if (typeof drawGrid === 'function') try { drawGrid(); } catch (_) {}
+  const sec = document.getElementById('solutionSection');
+  if (sec) sec.classList.remove('visible');
+  const wrap = document.getElementById('savePreviewWrap');
+  if (wrap) wrap.style.display = 'none';
+}
+
+function showScanError(msg) {
+  pieces = [];
+  selectedIdx = -1;
+  if (typeof renderPieceList === 'function') renderPieceList();
+  const empty = document.getElementById('pieceEmpty');
+  if (empty) {
+    empty.style.display = 'block';
+    empty.classList.add('scan-error');
+    empty.textContent = 'No balloons found. You can still draw or edit pieces below.';
+  }
+  const banner = document.getElementById('scanError');
+  if (banner) {
+    banner.textContent = msg;
+    banner.classList.add('show');
+  }
+  hideSolutionSilent();
+  setStatus(msg, 'error');
+}
+
+function clearScanError() {
+  const banner = document.getElementById('scanError');
+  if (banner) {
+    banner.textContent = '';
+    banner.classList.remove('show');
+  }
+  const empty = document.getElementById('pieceEmpty');
+  if (empty) empty.classList.remove('scan-error');
+  const status = document.getElementById('status');
+  if (status) status.classList.remove('error');
+}
+
+function resetForNewScan() {
+  clearScanError();
+  hideSolutionSilent();
+  pieces = [];
+  selectedIdx = -1;
+  lastHoneyCount = 0;
+  lastHoneyCols = 0;
+  lastHoneyBox = null;
+  boardSizeBeforeScan = BOARD_SIZE;
+  if (typeof renderPieceList === 'function') renderPieceList();
+}
+
+function revertInventedBoard() {
+  if (BOARD_SIZE !== boardSizeBeforeScan && COLUMN_BOARDS[boardSizeBeforeScan]) {
+    applyColumnBoard(COLUMN_BOARDS[boardSizeBeforeScan].sizes);
+  }
+}
+
+function classifyBoardFromScan(extra) {
+  const gate = (typeof GokBoardGate !== 'undefined' && GokBoardGate.classifyKnownBoard)
+    ? GokBoardGate.classifyKnownBoard
+    : null;
+  if (!gate) return null;
+  const input = Object.assign({
+    honeyCount: lastHoneyCount,
+    honeyCols: lastHoneyCols
+  }, extra || {});
+  return gate(input);
+}
+
+function finishScan() {
+  const total = pieces.reduce((s, p) => s + (p.size || 0), 0);
+  const junkFn = (typeof GokBoardGate !== 'undefined' && GokBoardGate.isJunkScan)
+    ? GokBoardGate.isJunkScan
+    : function (x) { return !x.trayPieces; };
+  const junk = junkFn({
+    honeyCount: lastHoneyCount,
+    trayPieces: pieces.length,
+    trayTotal: total
+  });
+  if (junk || !pieces.length) {
+    revertInventedBoard();
+    showScanError('Could not read this photo. Use a clear full-level screenshot with the honeycomb and balloon tray visible.');
+    return false;
+  }
+  if (total === BOARD_SIZE) {
+    clearScanError();
+    setStatus('Scan complete — ' + pieces.length + ' pieces, ' + total + ' balloons. Solving…');
+    solve({ fromScan: true });
+    return true;
+  }
+  clearScanError();
+  setStatus('Scan found ' + pieces.length + ' pieces (' + total + '/' + BOARD_SIZE + ' balloons). Fix any chips that look off, then Solve.');
+  return false;
+}
 
 function startNewPiece() {
   initPieceEditor();
@@ -634,6 +743,7 @@ function deleteSelected() {
 function clearPieces() {
   pieces = [];
   selectedIdx = -1;
+  clearScanError();
   renderPieceList();
   document.getElementById('deleteBtn').disabled = true;
   document.getElementById('solutionSection').classList.remove('visible');
@@ -2642,23 +2752,19 @@ function applyColumnBoard(sizes) {
 function nearestColumnBoard(heights) {
   const sum = heights.reduce((s, n) => s + n, 0);
   const nCol = heights.length;
+  const classified = classifyBoardFromScan({
+    honeyCount: sum,
+    honeyCols: nCol,
+    nColGroups: nCol,
+    trayTotal: sum
+  });
+  if (classified && COLUMN_BOARDS[classified]) return COLUMN_BOARDS[classified].sizes.slice();
   if (nCol >= 16 && nCol <= 18 && sum >= 130) return COLUMN_BOARDS[157].sizes.slice();
   if (nCol >= 12 && nCol <= 14 && sum >= 70 && sum <= 120) return COLUMN_BOARDS[91].sizes.slice();
   if (nCol >= 8 && nCol <= 10 && sum >= 28 && sum <= 62) return COLUMN_BOARDS[43].sizes.slice();
-  if (sum >= 140 && sum <= 180) return COLUMN_BOARDS[157].sizes.slice();
   if (sum >= 75 && sum <= 115) return COLUMN_BOARDS[91].sizes.slice();
   if (sum >= 28 && sum <= 62) return COLUMN_BOARDS[43].sizes.slice();
-  let best = null, bestD = 1e9;
-  Object.values(COLUMN_BOARDS).forEach(spec => {
-    const b = spec.sizes;
-    const d = b.length === nCol
-      ? heights.reduce((s, n, i) => s + Math.abs(n - b[i]), 0)
-      : 14 + Math.abs(b.length - nCol) * 4 + Math.abs(sum - b.reduce((s, n) => s + n, 0));
-    if (d < bestD) { bestD = d; best = b; }
-  });
-  if (best && bestD <= 10) return best.slice();
-  // Never jump to 91 just because detection was noisy
-  return (sum >= 70 ? COLUMN_BOARDS[91] : COLUMN_BOARDS[43]).sizes.slice();
+  return null;
 }
 
 /** Locate the cream honeycomb cluster (full-screen shot or close-up). */
@@ -2718,10 +2824,7 @@ function findHoneycombBounds(img) {
     }
   }
   if (total < 40 || maxX - minX < 20) {
-    return {
-      x0: Math.floor(IW * 0.12), y0: Math.floor(IH * 0.22),
-      x1: Math.floor(IW * 0.88), y1: Math.floor(IH * 0.56)
-    };
+    return null;
   }
   const padX = Math.max(4, (maxX - minX) * 0.12);
   const padY = Math.max(4, (maxY - minY) * 0.12);
@@ -2732,10 +2835,6 @@ function findHoneycombBounds(img) {
     y1: Math.min(IH, Math.ceil((maxY + padY) / th * IH))
   };
 }
-
-let lastHoneyBox = null;
-let lastHoneyCount = 0;
-let lastHoneyCols = 0;
 
 /** Tray = colorful balloons in the lower part of the shot (never skip them). */
 function findTrayBounds(img, honey) {
@@ -2780,11 +2879,16 @@ function scanHoneycomb() {
   const img = sourceImage;
   const box = findHoneycombBounds(img);
   lastHoneyBox = box;
+  if (!box) {
+    lastHoneyCount = 0;
+    lastHoneyCols = 0;
+    return { sizes: null, total: BOARD_SIZE, detected: 0 };
+  }
   const srcW = box.x1 - box.x0, srcH = box.y1 - box.y0;
   if (srcW < 40 || srcH < 40) {
     lastHoneyCount = 0;
     lastHoneyCols = 0;
-    return { sizes: COLUMN_BOARDS[91].sizes, total: 91, detected: 0 };
+    return { sizes: null, total: BOARD_SIZE, detected: 0 };
   }
 
   // Enlarge cluster for cleaner circle centers
@@ -2883,7 +2987,6 @@ function scanHoneycomb() {
     }
   }
 
-  let sizes;
   const n = peaks.length;
   const spanX = n ? (Math.max(...peaks.map(p => p.x)) - Math.min(...peaks.map(p => p.x))) : 0;
   const spanY = n ? (Math.max(...peaks.map(p => p.y)) - Math.min(...peaks.map(p => p.y))) : 0;
@@ -2892,16 +2995,15 @@ function scanHoneycomb() {
   const nRowsEst = spanY > 8 ? (spanY / Math.max(6, typR * 2.05) + 1) : 0;
   lastHoneyCols = nColsEst;
 
-  if (nColsEst >= 15.2 || (nColsEst >= 14.6 && nRowsEst >= 11) || n >= 125) {
-    sizes = COLUMN_BOARDS[157].sizes.slice();
-  } else if (n >= 70 && n <= 115) {
-    sizes = COLUMN_BOARDS[91].sizes.slice();
-  } else if (nColsEst >= 11.3 || (nColsEst >= 11 && nRowsEst >= 8.4)) {
-    sizes = COLUMN_BOARDS[91].sizes.slice();
-  } else if (n >= 36 && n <= 52 && nColsEst >= 7.6 && nColsEst <= 10.4 && nRowsEst <= 8.2) {
-    sizes = COLUMN_BOARDS[43].sizes.slice();
-  } else if (nColsEst >= 7.6 && nColsEst <= 10.4 && n <= 60 && nRowsEst <= 8.2) {
-    sizes = COLUMN_BOARDS[43].sizes.slice();
+  let sizes = null;
+  const classified = classifyBoardFromScan({
+    honeyCount: n,
+    honeyCols: nColsEst,
+    honeyRows: nRowsEst,
+    nColGroups: 0
+  });
+  if (classified && COLUMN_BOARDS[classified]) {
+    sizes = COLUMN_BOARDS[classified].sizes.slice();
   } else if (n >= 18) {
     const xs = peaks.map(p => p.x).sort((a, b) => a - b);
     const gaps = [];
@@ -2932,26 +3034,25 @@ function scanHoneycomb() {
       });
       cols[bi]++;
     });
-    sizes = nearestColumnBoard(cols);
     const nCol = groups.length;
     lastHoneyCols = Math.max(lastHoneyCols, nCol);
-    if (nCol >= 16 && nCol <= 18) sizes = COLUMN_BOARDS[157].sizes.slice();
-    else if (nCol >= 12 && nCol <= 15 && nColsEst < 15.2) sizes = COLUMN_BOARDS[91].sizes.slice();
-    else if (nCol >= 8 && nCol <= 10 && nColsEst < 11 && n <= 60) sizes = COLUMN_BOARDS[43].sizes.slice();
-    else if (nColsEst >= 15.2) sizes = COLUMN_BOARDS[157].sizes.slice();
-    else if (n >= 70 || nColsEst >= 11.0) sizes = COLUMN_BOARDS[91].sizes.slice();
-  } else if (n >= 55) {
-    sizes = COLUMN_BOARDS[91].sizes.slice();
-  } else if (n >= 32 && n <= 54 && nColsEst <= 10.5 && nRowsEst <= 8.2) {
-    sizes = COLUMN_BOARDS[43].sizes.slice();
-  } else {
-    // Weak honey read (full-phone chrome, glare). Do not smash a 91 board down to 43.
-    lastHoneyCount = n;
-    lastHoneyCols = nColsEst || 0;
-    return { sizes: null, total: BOARD_SIZE, detected: n };
+    sizes = nearestColumnBoard(cols);
+    if (!sizes) {
+      const retry = classifyBoardFromScan({
+        honeyCount: n,
+        honeyCols: lastHoneyCols,
+        honeyRows: nRowsEst,
+        nColGroups: nCol
+      });
+      if (retry && COLUMN_BOARDS[retry]) sizes = COLUMN_BOARDS[retry].sizes.slice();
+    }
   }
 
   lastHoneyCount = n;
+  lastHoneyCols = nColsEst || lastHoneyCols;
+  if (!sizes) {
+    return { sizes: null, total: BOARD_SIZE, detected: n };
+  }
   applyColumnBoard(sizes);
   return { sizes, total: sizes.reduce((s, v) => s + v, 0), detected: n };
 }
@@ -2959,37 +3060,17 @@ function scanHoneycomb() {
 function promoteBoardFromPieces() {
   const tot = pieces.reduce((s, p) => s + (p.size || 0), 0);
   const ids = new Set(pieces.map(p => p.paletteId).filter(Boolean));
-  const hasGS = ids.has('green') && ids.has('silver');
-  const nCol = pieces.length;
-  const honeyOk = lastHoneyCount >= 20;
-  const want157 = lastHoneyCols >= 15.4 || lastHoneyCount >= 120 || tot >= 125;
-  const looks91 = !want157 && (
-    hasGS ||
-    nCol >= 9 ||
-    tot >= 60 ||
-    lastHoneyCount >= 58 ||
-    lastHoneyCols >= 11.0
-  );
-  const looks43 = !want157 && !looks91 && (
-    (nCol <= 8 && tot >= 30 && tot <= 52 && !ids.has('green') && !ids.has('silver')) ||
-    (honeyOk && lastHoneyCount <= 52 && lastHoneyCols <= 10.5 && nCol <= 8 && !ids.has('green') && !ids.has('silver'))
-  );
-  if (looks43) {
+  let classified = classifyBoardFromScan({ trayTotal: tot });
+  if (!classified && ids.has('green') && ids.has('silver') && tot >= 50 && lastHoneyCols < 15.6) {
+    classified = 91;
+  }
+  if (classified === 43) {
     const before = pieces.length;
     pieces = pieces.filter(p => p.paletteId !== 'green' && p.paletteId !== 'silver' && p.paletteId !== 'lime');
     if (pieces.length !== before) renderPieceList();
   }
-  if (want157 && BOARD_SIZE !== 157) {
-    applyColumnBoard(COLUMN_BOARDS[157].sizes);
-    return 157;
-  }
-  if (looks91 && BOARD_SIZE !== 91) {
-    applyColumnBoard(COLUMN_BOARDS[91].sizes);
-    return 91;
-  }
-  if (looks43 && BOARD_SIZE !== 43) {
-    applyColumnBoard(COLUMN_BOARDS[43].sizes);
-    return 43;
+  if (classified && COLUMN_BOARDS[classified] && BOARD_SIZE !== classified) {
+    applyColumnBoard(COLUMN_BOARDS[classified].sizes);
   }
   return BOARD_SIZE;
 }
@@ -3034,7 +3115,7 @@ function autoScan() {
       renderPieceList();
       document.getElementById('deleteBtn').disabled = true;
       const total = pieces.reduce((s, p) => s + p.size, 0);
-      setStatus('Found ' + pieces.length + ' colors (' + total + ' balloons) on a ' + BOARD_SIZE + '-cell board. Edit if needed, then Solve.');
+      setStatus('Found ' + pieces.length + ' colors (' + total + ' balloons) on a ' + BOARD_SIZE + '-cell board.');
       return;
     }
   }
@@ -4092,7 +4173,7 @@ function autoScan() {
     return;
   }
   if (total === BOARD_SIZE) {
-    setStatus('Scan complete — ' + pieces.length + ' pieces, ' + total + '/' + BOARD_SIZE + ' balloons. Tap Solve.');
+    setStatus('Scan complete — ' + pieces.length + ' pieces, ' + total + '/' + BOARD_SIZE + ' balloons.');
   } else {
     setStatus('Scan found ' + pieces.length + ' pieces (' + total + '/' + BOARD_SIZE + ' balloons). Fix any chips that look off, then Solve.');
   }
@@ -4183,9 +4264,10 @@ function smallestHole(occ, adj, N) {
   return min;
 }
 
-function solve() {
+function solve(opts) {
+  const fromScan = !!(opts && opts.fromScan);
   if (!pieces.length) {
-    setStatus('No pieces yet. Draw each group on the honeycomb and Save, or run Auto-Scan.');
+    setStatus('No pieces yet. Draw each group on the honeycomb and Save, or upload a screenshot.');
     return;
   }
   const total = pieces.reduce((s, p) => s + p.size, 0);
@@ -4514,6 +4596,7 @@ document.getElementById('fileInput').addEventListener('change', e => {
   if (!f) return;
   const runScan = (img) => {
     sourceImage = img;
+    resetForNewScan();
     setStatus('Scanning honeycomb and tray…');
     let errMsg = '';
     try { scanHoneycomb(); } catch (err) { errMsg = String(err && err.message || err); console.error(err); }
@@ -4528,27 +4611,18 @@ document.getElementById('fileInput').addEventListener('change', e => {
           selectedIdx = -1;
           promoteBoardFromPieces();
           renderPieceList();
-          setStatus('Found ' + pieces.length + ' colors. Edit if needed, then Solve.');
         }
       } catch (err) { errMsg = String(err && err.message || err); }
     }
     if (!pieces.length) {
-      const { w, h } = imgSize(sourceImage);
-      let diag = 'img ' + w + 'x' + h;
-      try {
-        const box = { x0: 0, y0: Math.floor(h * 0.5), x1: w, y1: h };
-        const { data, W, H } = rasterizeRegion(sourceImage, box, 320, 240);
-        let lit = 0, col = 0;
-        for (let i = 0; i < data.length; i += 16) {
-          if (data[i] + data[i + 1] + data[i + 2] > 40) lit++;
-          if (simpleColorId(data[i], data[i + 1], data[i + 2])) col++;
-        }
-        diag += ' crop ' + W + 'x' + H + ' lit=' + lit + ' color=' + col;
-      } catch (err) { diag += ' diag ' + (err && err.message || err); }
-      const empty = document.getElementById('pieceEmpty');
-      if (empty) empty.textContent = errMsg ? 'Scan error. Try another screenshot.' : 'No balloons found. Try a clearer full-level screenshot.';
-      setStatus(errMsg ? 'Scan failed. Try another screenshot.' : 'No balloons found. Use a full-level screenshot with the tray visible.');
+      revertInventedBoard();
+      const failText = errMsg
+        ? 'Could not read this photo. Try another screenshot.'
+        : 'Could not read this photo. Use a clear full-level screenshot with the honeycomb and balloon tray visible.';
+      showScanError(failText);
+      return;
     }
+    finishScan();
   };
 
   const showPreview = (url) => {
@@ -4597,7 +4671,13 @@ function loadViaFileReader(f, showPreview, afterPreviewReady) {
 drawGrid();
 
 // PWA: service worker + install prompt
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
   navigator.serviceWorker.getRegistrations().then((regs) => {
     regs.forEach((r) => r.update());
   });

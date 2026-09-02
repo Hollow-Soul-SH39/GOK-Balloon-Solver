@@ -1,8 +1,9 @@
 /* GOK Balloon Puzzle Solver — cache app shell only (never user screenshots) */
-const CACHE = 'gok-balloon-v2';
+const CACHE = 'gok-balloon-v105';
 const SHELL = [
   './',
   './index.html',
+  './board-gate.js',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
@@ -26,16 +27,29 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  e.respondWith(
-    caches.match(req).then((hit) => {
-      if (hit) return hit;
-      return fetch(req).then((res) => {
-        if (res.ok && (url.pathname.endsWith('.html') || url.pathname.endsWith('.js') || url.pathname.endsWith('.webmanifest') || url.pathname.endsWith('.png'))) {
+  const live = /(?:\/|\.html|\.js|\.webmanifest)$/.test(url.pathname) || url.pathname.endsWith('/GOK-Balloon-Solver');
+  if (live) {
+    e.respondWith(
+      fetch(req).then((res) => {
+        if (res.ok) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(req, copy));
         }
         return res;
-      }).catch(() => caches.match('./index.html'));
+      }).catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
+    );
+    return;
+  }
+  e.respondWith(
+    caches.match(req).then((hit) => {
+      if (hit) return hit;
+      return fetch(req).then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      });
     })
   );
 });
