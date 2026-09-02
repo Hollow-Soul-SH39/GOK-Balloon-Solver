@@ -163,7 +163,7 @@
     <div class="controls">
       <label class="btn secondary">Choose Screenshot<input type="file" id="fileInput" accept="image/*"></label>
     </div>
-    <p class="help" id="scanHint" style="margin:8px 0 0">Upload a screenshot. A clean scan solves immediately — you can still edit pieces if something looks off. <span style="opacity:.55">v105</span></p>
+    <p class="help" id="scanHint" style="margin:8px 0 0">Upload a screenshot. A clean scan solves immediately — you can still edit pieces if something looks off. <span style="opacity:.55">v106</span></p>
     <div id="scanError" class="scan-error-banner" role="alert"></div>
     <canvas id="scanCanvas" width="480" height="160" hidden></canvas>
   </div>
@@ -237,6 +237,7 @@
   </footer>
 
 <script src="board-gate.js"></script>
+<script src="balloon-color.js"></script>
 <script>
 
 // ============================================================================
@@ -1011,51 +1012,8 @@ function makeOffscreen(w, h) {
 }
 
 function simpleColorId(r, g, b) {
-  const hsv = rgbToHsv(r, g, b);
-  const { h, s, v } = hsv;
-  const mx = Math.max(r, g, b);
-  const chroma = mx - Math.min(r, g, b);
-  if (v < 0.22) return null;
-  if (v > 0.97 && s < 0.18) return null;
-
-  // Magenta family BEFORE red (purple balloons have a red sheen)
-  const magentaHue = (h >= 275 || h <= 18);
-  if (magentaHue && r > 85 && b > 70) {
-    const pinkish = v > 0.55 && r > 150 && b > 112 && g > 92 && g < 220 &&
-      b > r * 0.50 && s > 0.10 && s < 0.62;
-    if (pinkish) return 'pink';
-    if ((h >= 258 && h < 330 && b > 80 && r > 55 && s > 0.22) ||
-        (b > g + 6 && r > g + 10 && b > r * 0.48 && s > 0.25 && v < 0.90)) {
-      return 'purple';
-    }
-  }
-
-  // Vivid colors
-  if (s > 0.26 && chroma > 26 && v > 0.28) {
-    if ((h <= 12 || h >= 348) && r > g + 16 && r > b + 28 && r > 100) return 'red';
-    if (h > 12 && h < 36 && r > 145 && r > b + 18 && v > 0.52 && g > 75) {
-      if (v < 0.60 && r < 185 && g < 120 && b < 95) return 'copper';
-      return 'orange';
-    }
-    if (h >= 32 && h <= 70 && r > 125 && g > 100 && r > b + 12 && g > b + 8) return 'yellow';
-    if (h >= 68 && h < 102 && g > 145 && r > 80 && r < 210 && g >= r && g > b + 20 && s > 0.28) return 'lime';
-    if (h >= 92 && h < 155 && g > r + 10 && g > 100 && s > 0.28) return 'green';
-    if (h >= 148 && h < 196 && g > 75 && b > 70 && g >= r + 4) return 'teal';
-    if (h >= 196 && h < 268 && b > r + 8 && b > 90 && v > 0.28) return 'blue';
-    if (h >= 258 && h < 330 && b > 75 && r > 50) return 'purple';
-  }
-
-  // Dark copper (after vivid orange/yellow)
-  if (h >= 12 && h <= 40 && s > 0.30 && v >= 0.26 && v < 0.60 &&
-      r > 88 && r < 190 && g > 48 && g < 130 && b < 98 &&
-      r > g + 10 && r > b + 20) {
-    return 'copper';
-  }
-
-  // Silver last — do not steal colorful balloon bodies
-  if (s < 0.26 && v > 0.44 && v < 0.90 && chroma < 46 && mx > 118 && mx < 228 &&
-      Math.abs(r - g) < 26 && Math.abs(g - b) < 30 && Math.min(r, g, b) > 78) {
-    return 'silver';
+  if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.simpleColorId) {
+    return GokBalloonColor.simpleColorId(r, g, b);
   }
   return null;
 }
@@ -1371,8 +1329,6 @@ function detectTrayByCircles(data, W, H) {
   const out = [];
   by.forEach((pts, id) => {
     if (pts.length < 2) return;
-    if ((id === 'green') && pts.length < 4) return;
-    if ((id === 'silver') && pts.length < 3) return;
     const rgb = PAL[id] || [180, 180, 180];
     const members = pts.map(p => ({
       cx: p.x, cy: p.y,
@@ -1380,8 +1336,6 @@ function detectTrayByCircles(data, W, H) {
       paletteId: id, score: p.s
     }));
     const clustered = largestHangingCluster(members, Math.max(12, typR * 2));
-    if (id === 'green' && clustered.length < 4) return;
-    if (id === 'silver' && clustered.length < 3) return;
     if (clustered.length < 2) return;
     let cells = hexShapeFromPoints(clustered);
     if (!cells.length) cells = clustered.map((_, i) => ({ dq: i % 4, dr: Math.floor(i / 4) }));
@@ -1404,9 +1358,9 @@ function detectTrayByCircles(data, W, H) {
 }
 
 function harvestSilver(data, W, H) {
-  const y0 = Math.floor(H * 0.46);
-  const x0 = Math.floor(W * 0.08);
-  const x1 = Math.floor(W * 0.62);
+  const y0 = Math.floor(H * 0.42);
+  const x0 = Math.floor(W * 0.04);
+  const x1 = Math.floor(W * 0.70);
   const mask = new Uint8Array(W * H);
   let n = 0;
   for (let y = y0; y < H - 1; y++) {
@@ -1445,7 +1399,7 @@ function harvestSilver(data, W, H) {
       raw.push({ x, y, s: d0 });
     }
   }
-  if (raw.length < 3) return null;
+  if (raw.length < 2) return null;
   raw.sort((a, b) => b.s - a.s);
   const typR = raw[Math.min(raw.length - 1, Math.floor(raw.length * 0.35))].s;
   const sep = Math.max(8, typR * 1.7);
@@ -1455,7 +1409,7 @@ function harvestSilver(data, W, H) {
     if (peaks.some(q => Math.hypot(q.x - p.x, q.y - p.y) < sep)) return;
     peaks.push(p);
   });
-  if (peaks.length < 3 || peaks.length > 16) return null;
+  if (peaks.length < 2 || peaks.length > 16) return null;
   const rgb = [180, 185, 195];
   const members = peaks.map(p => ({
     cx: p.x, cy: p.y,
@@ -1463,7 +1417,7 @@ function harvestSilver(data, W, H) {
     paletteId: 'silver', score: p.s
   }));
   let cells = hexShapeFromPoints(members);
-  if (cells.length < 3) cells = members.map((_, i) => ({ dq: i % 4, dr: Math.floor(i / 4) }));
+  if (cells.length < 2) cells = members.map((_, i) => ({ dq: i % 4, dr: Math.floor(i / 4) }));
   if (cells.length > members.length) cells = cells.slice(0, members.length);
   return {
     color: members[0].color,
@@ -1478,7 +1432,7 @@ function ensureSilver(out, data, W, H) {
   if (!out || out.some(p => p.paletteId === 'silver')) return out;
   try {
     const sil = harvestSilver(data, W, H);
-    if (sil && sil.size >= 3) out.push(sil);
+    if (sil && sil.size >= 2) out.push(sil);
   } catch (_) {}
   return out;
 }
@@ -1528,8 +1482,6 @@ function detectTrayByColorWatershed(data, W, H) {
     if (n < 36) return;
     const basins = watershedCenters(mask, W, H);
     if (basins.length < 2) return;
-    if (id === 'green' && basins.length < 4) return;
-    if (id === 'silver' && basins.length < 3) return;
     const areas = basins.map(b => b.area).sort((a, b) => a - b);
     const typA = areas[Math.floor(areas.length * 0.45)] || areas[areas.length >> 1];
     const goldish = id === 'red' || id === 'orange' || id === 'copper' || id === 'yellow';
@@ -1553,8 +1505,6 @@ function detectTrayByColorWatershed(data, W, H) {
     const hardMax = goldish ? 10 : 14;
     if (members.length > hardMax) members = members.slice(0, hardMax);
     if (members.length < 2) return;
-    if (id === 'green' && members.length < 4) return;
-    if (id === 'silver' && members.length < 3) return;
     let cells = hexShapeFromPoints(members);
     if (!cells.length) cells = members.map((_, i) => ({ dq: i % 4, dr: Math.floor(i / 4) }));
     if (cells.length > members.length) cells = cells.slice(0, members.length);
@@ -1716,7 +1666,7 @@ function honeColorGroup(data, W, H, id) {
   if (sites.length < 2) return null;
   if (sites.length > 14) sites = sites.slice(0, 14);
   const use = sites;
-  if (id === 'lime' && use.length < 5) return null;
+  if (id === 'lime' && use.length < 2) return null;
 
   const PAL = {
     red: [220, 45, 40], yellow: [250, 210, 45], orange: [245, 150, 40],
@@ -1812,7 +1762,7 @@ function detectTrayByWatershedVote(data, W, H) {
   const out = [];
   by.forEach((pts, id) => {
     if (pts.length < 2) return;
-    if (id === 'lime' && pts.length < 5) return;
+    if (id === 'lime' && pts.length < 2) return;
     let sites = delaunayMeshKeep(pts.map(p => ({ cx: p.cx, cy: p.cy, s: p.s })));
     if (sites.length < 2) return;
     if (sites.length > 14) sites = sites.slice(0, 14);
@@ -1936,7 +1886,7 @@ function detectTrayByDTMarkers(data, W, H) {
   const out = [];
   by.forEach((pts, id) => {
     if (pts.length < 2) return;
-    if (id === 'lime' && pts.length < 5) return;
+    if (id === 'lime' && pts.length < 2) return;
     let sites = delaunayMeshKeep(pts.map(p => ({ cx: p.cx, cy: p.cy, s: p.s })));
     if (sites.length < 2) return;
     if (sites.length > 14) sites = sites.slice(0, 14);
@@ -2144,8 +2094,9 @@ function detectTrayByBunchVote(data, W, H) {
       const chroma = mx - Math.min(r, g, b);
       const { h, s, v } = rgbToHsv(r, g, b);
       if (v < 0.24 || v > 0.97) continue;
-      const wood = h >= 18 && h <= 46 && s < 0.36 && v < 0.60 && b < 105 && r > g && g >= b - 8;
+      const wood = h >= 18 && h <= 46 && s < 0.42 && v < 0.62 && b < 110 && r > g && g >= b - 8;
       if (wood) continue;
+      if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.isWoodOrBasket(r, g, b)) continue;
       const nx = x / W, ny = y / H;
       const inBasket = nx > 0.30 && nx < 0.70 && ny > 0.34 && ny < 0.74;
       const id0 = simpleColorId(r, g, b);
@@ -2465,8 +2416,6 @@ function detectTrayPieces(data, W, H) {
       uniq.push(p);
     });
     if (uniq.length < 2) return;
-    if (id === 'green' && uniq.length < 4) return;
-    if (id === 'silver' && uniq.length < 3) return;
 
     // One hanging bunch per color (tray physics): connected balloons only.
     const goldish = id === 'red' || id === 'orange' || id === 'copper' || id === 'yellow';
@@ -2534,9 +2483,15 @@ function slotColorMask(id, r, g, b) {
   if (id === 'purple') return (((h >= 255 && h <= 330) || (h <= 12 && b > 80 && r > 90 && b > g - 5)) && s > 0.18 && v > 0.30 && r > 65);
   if (id === 'teal') return (h >= 140 && h <= 205 && g > 70 && b > 60 && g >= r && s > 0.16 && v > 0.28);
   if (id === 'pink') return (((h >= 300 || h <= 22) && r > 145 && b > 105 && g > 85 && s > 0.08 && s < 0.68 && v > 0.45));
-  if (id === 'copper') return (h >= 12 && h <= 40 && r > 95 && r < 195 && g < 135 && b < 100 && r > g + 10 && v > 0.28 && v < 0.68 && s > 0.28);
-  if (id === 'green') return (h >= 72 && h <= 155 && g > r + 10 && g > 95 && s > 0.24 && v > 0.28);
-  if (id === 'silver') return (s < 0.28 && v > 0.44 && v < 0.90 && chroma < 50 && mx > 120 && mx < 225 && Math.abs(r - g) < 26 && Math.min(r, g, b) > 80);
+  if (id === 'copper') {
+    if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.isWoodOrBasket(r, g, b)) return false;
+    return (h >= 10 && h <= 38 && r > 100 && r < 200 && g < 120 && b < 90 && r > g + 18 && v > 0.30 && v < 0.66 && s > 0.38);
+  }
+  if (id === 'green') return (h >= 82 && h <= 155 && g > r + 8 && g > 95 && s > 0.22 && v > 0.28);
+  if (id === 'silver') {
+    if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.isChromeGlint(r, g, b)) return false;
+    return (s < 0.32 && v > 0.40 && v < 0.88 && chroma < 52 && mx > 112 && mx < 222 && Math.abs(r - g) < 30 && Math.min(r, g, b) > 72);
+  }
   return false;
 }
 
@@ -3194,10 +3149,9 @@ function autoScan() {
     }
 
     // Sky / fog / warm cloud wash (must not become copper or green)
-    // (silver already handled above)
     if (s < 0.18 && v > 0.42 && chroma < 28) return null;
     if (s < 0.26 && Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && v > 0.42 && chroma < 30) return null;
-    // Brownish sky / wood wash — leave room for copper balloons
+    if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.isWoodOrBasket(r, g, b)) return null;
     if (chroma < 32 && s < 0.36 && v > 0.40 && h >= 10 && h <= 50) return null;
 
     // --- Teal (cyan-green; not true blue)
@@ -3229,19 +3183,19 @@ function autoScan() {
     if (r > 150 && g > 125 && b < 155 && r > b + 22 && g > b + 18 &&
         h >= 36 && h <= 72 && s > 0.25 && v > 0.40) return 'yellow';
 
-    // Deep basket: only pink/teal after this
-    if (bs < 0.88) return null;
+    // Deep basket: only pink/teal, plus green on the far left
+    if (bs < 0.88 && !(h >= 82 && h <= 160 && g > r + 10 && x < W * 0.42)) return null;
 
-    // --- Copper / brown-bronze ---
-    if (r > 90 && r < 210 && g > 40 && g < 140 && b < 100 &&
-        r > g + 10 && r > b + 22 && chroma >= 30 &&
-        h >= 8 && h <= 42 && s > 0.22 && s < 0.85 &&
-        v >= 0.22 && v < 0.72) {
+    // --- Copper / brown-bronze (right-side balloon paint, not wicker)
+    if (r > 100 && r < 200 && g > 42 && g < 120 && b < 90 &&
+        r > g + 18 && r > b + 28 && chroma >= 42 &&
+        h >= 10 && h <= 38 && s > 0.38 && s < 0.85 &&
+        v >= 0.30 && v < 0.66 && (g / Math.max(1, r)) < 0.62) {
       return 'copper';
     }
 
     // --- Green ---
-    if (g > 100 && g > r + 12 && g > b && h >= 90 && h <= 160 &&
+    if (g > 95 && g > r + 8 && g > b && h >= 82 && h <= 160 &&
         s > 0.22 && v > 0.24) return 'green';
 
     return null;
@@ -3356,6 +3310,44 @@ function autoScan() {
         if (!isYellow) continue;
         labels[i] = 'yellow';
         sat[i] = Math.max(0.15, hsv.s);
+      }
+    }
+  }
+
+  // Green recovery — lower-left tray (green was under-counted vs lime/wood)
+  {
+    for (let y = Math.floor(H * 0.52); y < Math.floor(H * 0.97); y++) {
+      for (let x = Math.floor(W * 0.00); x < Math.floor(W * 0.40); x++) {
+        const i = y * W + x;
+        if (labels[i]) continue;
+        const o = i * 4;
+        const r = data[o], g = data[o + 1], b = data[o + 2];
+        if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.isWoodOrBasket(r, g, b)) continue;
+        const hsv = rgbToHsv(r, g, b);
+        const isGreen =
+          g > 95 && g > r + 8 && g > b &&
+          hsv.h >= 82 && hsv.h <= 160 && hsv.s > 0.22 && hsv.v > 0.26 && hsv.v < 0.95;
+        if (!isGreen) continue;
+        labels[i] = 'green';
+        sat[i] = Math.max(0.18, hsv.s);
+      }
+    }
+  }
+
+  // Silver recovery — lower tray, skip chrome highlights
+  {
+    for (let y = Math.floor(H * 0.48); y < Math.floor(H * 0.97); y++) {
+      for (let x = Math.floor(W * 0.06); x < Math.floor(W * 0.62); x++) {
+        const i = y * W + x;
+        if (labels[i]) continue;
+        const o = i * 4;
+        const r = data[o], g = data[o + 1], b = data[o + 2];
+        if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.isChromeGlint(r, g, b)) continue;
+        const id = simpleColorId(r, g, b);
+        if (id !== 'silver') continue;
+        labels[i] = 'silver';
+        const hsv = rgbToHsv(r, g, b);
+        sat[i] = Math.max(0.08, hsv.s);
       }
     }
   }
@@ -3664,15 +3656,23 @@ function autoScan() {
     b > 100 && b > r + 16 && b > g + 6);
   forceColorPeaks('orange', 0.58, 0.99, 0.00, 0.40, (r, g, b) =>
     r > 165 && g > 75 && g < 180 && b < 115 && r > g + 20);
-  forceColorPeaks('copper', 0.62, 0.99, 0.22, 0.78, (r, g, b) => {
+  forceColorPeaks('copper', 0.70, 0.99, 0.28, 0.76, (r, g, b) => {
+    if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.isWoodOrBasket(r, g, b)) return false;
     const hsv = rgbToHsv(r, g, b);
-    return r > 95 && r < 215 && g > 40 && g < 145 && b < 105 &&
-      r > g + 8 && hsv.h >= 8 && hsv.h <= 44 && hsv.s > 0.22 && hsv.v < 0.74;
+    return r > 100 && r < 200 && g > 42 && g < 120 && b < 90 &&
+      r > g + 18 && hsv.h >= 10 && hsv.h <= 38 && hsv.s > 0.38 && hsv.v < 0.66 &&
+      (g / Math.max(1, r)) < 0.62;
   });
   forceColorPeaks('yellow', 0.22, 0.55, 0.00, 0.38, (r, g, b) => {
     const hsv = rgbToHsv(r, g, b);
-    return r > 165 && g > 140 && b < 145 && hsv.h >= 36 && hsv.h <= 68 && hsv.s > 0.30;
+    return r > 165 && g > 145 && b < 80 && hsv.h >= 40 && hsv.h <= 68 && hsv.s > 0.35;
   });
+  forceColorPeaks('green', 0.00, 0.38, 0.52, 0.98, (r, g, b) => {
+    if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.isWoodOrBasket(r, g, b)) return false;
+    const hsv = rgbToHsv(r, g, b);
+    return g > 95 && g > r + 8 && g > b && hsv.h >= 82 && hsv.h <= 155 && hsv.s > 0.22;
+  });
+  forceColorPeaks('silver', 0.06, 0.58, 0.50, 0.97, (r, g, b) => simpleColorId(r, g, b) === 'silver');
 
   // Drop false peaks in deep basket (coins) — keep only pink/teal there
   {
@@ -3687,7 +3687,7 @@ function autoScan() {
   peaks.sort((a, b) => b.score - a.score);
   {
     const kept = [];
-    const sep = balloonD * 0.55;
+    const sep = balloonD * ((typeof GokBalloonColor !== 'undefined' && GokBalloonColor.FACE_SEP) || 0.70);
     peaks.forEach(p => {
       if (kept.some(q => q.id === p.id && Math.hypot(q.x - p.x, q.y - p.y) < sep)) return;
       if (kept.some(q => Math.hypot(q.x - p.x, q.y - p.y) < balloonD * 0.36)) return;
@@ -3706,8 +3706,14 @@ function autoScan() {
         if (i === j || p.id !== q.id) return;
         if (Math.hypot(p.x - q.x, p.y - q.y) < balloonD * 2.3) near++;
       });
-      // Isolated dots are almost always sky / wood / coin glints — drop them
-      if (near === 0) drop.add(i);
+      // Isolated dots are almost always sky / wood / coin glints — keep pink/teal on coins
+      if (near === 0) {
+        if (p.id === 'pink' || p.id === 'teal') {
+          const bs = Math.hypot((p.x - W * 0.52) / (W * 0.22), (p.y - H * 0.58) / (H * 0.28));
+          if (bs < 1.25) return;
+        }
+        drop.add(i);
+      }
     });
     for (let i = peaks.length - 1; i >= 0; i--) if (drop.has(i)) peaks.splice(i, 1);
   }
@@ -3737,7 +3743,7 @@ function autoScan() {
   }));
 
   // Group: same color + close neighbors only
-  const pieceLink = balloonD * 2.05;
+  const pieceLink = balloonD * ((typeof GokBalloonColor !== 'undefined' && GokBalloonColor.FACE_LINK) || 1.72);
   const parent = units.map((_, i) => i);
   const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   const unite = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[a] = b; };
@@ -3789,30 +3795,9 @@ function autoScan() {
     buckets.forEach(b => groups.push(b));
   });
 
-  // One piece per color: merge nearby fragments, then keep the largest cluster
+  // One piece per color: keep the largest hex-connected cluster (do not
+  // re-merge bunches that are only "nearby" — that glued adjacent same-color groups).
   {
-    const link = balloonD * 2.6;
-    let merged = true;
-    while (merged) {
-      merged = false;
-      outer: for (let i = 0; i < groups.length; i++) {
-        for (let j = i + 1; j < groups.length; j++) {
-          if (groups[i][0].paletteId !== groups[j][0].paletteId) continue;
-          let close = false;
-          for (const a of groups[i]) {
-            for (const b of groups[j]) {
-              if (Math.hypot(a.cx - b.cx, a.cy - b.cy) < link) { close = true; break; }
-            }
-            if (close) break;
-          }
-          if (!close) continue;
-          groups[i] = groups[i].concat(groups[j]);
-          groups.splice(j, 1);
-          merged = true;
-          break outer;
-        }
-      }
-    }
     const bestByColor = new Map();
     groups.forEach(g => {
       const id = g[0].paletteId;

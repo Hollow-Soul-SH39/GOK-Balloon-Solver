@@ -1,9 +1,10 @@
 /* GOK Balloon Puzzle Solver — cache app shell only (never user screenshots) */
-const CACHE = 'gok-balloon-v105';
+const CACHE = 'gok-balloon-v106';
 const SHELL = [
   './',
   './index.html',
   './board-gate.js',
+  './balloon-color.js',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',

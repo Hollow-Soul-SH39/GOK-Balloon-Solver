@@ -1,0 +1,177 @@
+/* Tray balloon color + clustering helpers (browser + Node).
+ * Read balloon faces, not basket wicker / wood / UI chrome.
+ */
+(function (root) {
+  function rgbToHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const d = max - min;
+    let h = 0;
+    if (d) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    return { h, s: max ? d / max : 0, v: max };
+  }
+
+  /** Basket wicker / tray wood — overlapping copper hue but flatter tan. */
+  function isWoodOrBasket(r, g, b) {
+    const { h, s, v } = rgbToHsv(r, g, b);
+    const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+    if (h < 14 || h > 50) return false;
+    if (s < 0.16 || s > 0.62) return false;
+    if (v < 0.26 || v > 0.64) return false;
+    if (b > 115) return false;
+    const gRatio = g / Math.max(1, r);
+    // Wood: G tracks R; copper paint is more orange (lower G/R, higher chroma).
+    if (gRatio > 0.56 && gRatio < 0.90 && b <= g * 0.92 && chroma < 96) return true;
+    if (chroma < 38 && s < 0.42 && r > 90 && r < 190 && g > 60 && g < 145) return true;
+    return false;
+  }
+
+  /** UI chrome / specular metal — not silver balloons. */
+  function isChromeGlint(r, g, b) {
+    const { s, v } = rgbToHsv(r, g, b);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (v > 0.93 && s < 0.22) return true;
+    if (mx > 235 && (mx - mn) < 28) return true;
+    if (b > r + 18 && b > g + 10 && v > 0.72 && s < 0.28) return true;
+    return false;
+  }
+
+  function simpleColorId(r, g, b) {
+    const hsv = rgbToHsv(r, g, b);
+    const { h, s, v } = hsv;
+    const mx = Math.max(r, g, b);
+    const chroma = mx - Math.min(r, g, b);
+    if (v < 0.22) return null;
+    if (v > 0.97 && s < 0.18) return null;
+    if (isChromeGlint(r, g, b)) return null;
+    if (isWoodOrBasket(r, g, b)) return null;
+
+    const magentaHue = (h >= 275 || h <= 18);
+    if (magentaHue && r > 85 && b > 70) {
+      const pinkish = v > 0.55 && r > 150 && b > 112 && g > 92 && g < 220 &&
+        b > r * 0.50 && s > 0.10 && s < 0.62;
+      if (pinkish) return 'pink';
+      if ((h >= 258 && h < 330 && b > 80 && r > 55 && s > 0.22) ||
+          (b > g + 6 && r > g + 10 && b > r * 0.48 && s > 0.25 && v < 0.90)) {
+        return 'purple';
+      }
+    }
+
+    if (s > 0.26 && chroma > 26 && v > 0.28) {
+      if ((h <= 12 || h >= 348) && r > g + 16 && r > b + 28 && r > 100) return 'red';
+      if (h > 12 && h < 36 && r > 145 && r > b + 18 && v > 0.52 && g > 75) {
+        const copperish = (g / Math.max(1, r)) < 0.58 && b < 100 && g < 125 && chroma >= 40;
+        if (copperish) return 'copper';
+        return 'orange';
+      }
+      // Yellow: keep off coin-gold (lower sat / more orange, extra B)
+      if (h >= 36 && h <= 70 && r > 135 && g > 115 && r > b + 18 && g > b + 12) {
+        const coinGold = h < 48 && b > 55 && (b / Math.max(1, g)) > 0.34 && s < 0.75;
+        if (!coinGold) return 'yellow';
+      }
+      // Lime is yellowish-green; true green has a larger G-R gap
+      if (h >= 68 && h < 102 && g > 145 && r > 90 && r < 210 && g >= r && g > b + 20 && s > 0.28) {
+        if (g > r + 18) return 'green';
+        return 'lime';
+      }
+      if (h >= 82 && h < 155 && g > r + 8 && g > 95 && s > 0.22) return 'green';
+      if (h >= 148 && h < 196 && g > 75 && b > 70 && g >= r + 4) return 'teal';
+      if (h >= 196 && h < 268 && b > r + 8 && b > 90 && v > 0.28 && s > 0.38) return 'blue';
+      if (h >= 258 && h < 330 && b > 75 && r > 50) return 'purple';
+    }
+
+    // Copper balloon paint — not tan wicker
+    if (h >= 10 && h <= 38 && s > 0.38 && v >= 0.30 && v < 0.66 &&
+        r > 100 && r < 200 && g > 42 && g < 120 && b < 90 &&
+        r > g + 18 && r > b + 28 && chroma >= 42 &&
+        (g / Math.max(1, r)) < 0.62) {
+      return 'copper';
+    }
+
+    // Silver balloons: slightly warm or cool gray, not chrome
+    if (s < 0.32 && v > 0.40 && v < 0.88 && chroma < 52 && mx > 112 && mx < 222 &&
+        Math.abs(r - g) < 30 && Math.abs(g - b) < 34 && Math.min(r, g, b) > 72) {
+      return 'silver';
+    }
+    return null;
+  }
+
+  /** Same-color faces within ~hex-neighbor distance stay one piece; farther bunches split. */
+  const FACE_LINK = 1.72;
+  const FACE_SEP = 0.70;
+
+  function clusterSameColor(points, balloonD) {
+    const n = points.length;
+    if (!n) return [];
+    const link = Math.max(8, balloonD * FACE_LINK);
+    const parent = points.map((_, i) => i);
+    const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if (points[i].id !== points[j].id) continue;
+        const d = Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y);
+        if (d <= link) parent[find(i)] = find(j);
+      }
+    }
+    const raw = new Map();
+    points.forEach((p, i) => {
+      const r = find(i);
+      if (!raw.has(r)) raw.set(r, []);
+      raw.get(r).push(p);
+    });
+    const groups = [];
+    raw.forEach(members => {
+      if (members.length <= 2) { groups.push(members); return; }
+      const m = members.length;
+      const p = Array.from({ length: m }, (_, i) => i);
+      const f = (a) => (p[a] === a ? a : (p[a] = f(p[a])));
+      const nn = [];
+      for (let i = 0; i < m; i++) {
+        let best = Infinity;
+        for (let j = 0; j < m; j++) {
+          if (i === j) continue;
+          const d = Math.hypot(members[i].x - members[j].x, members[i].y - members[j].y);
+          if (d < best) best = d;
+        }
+        if (best < Infinity) nn.push(best);
+      }
+      nn.sort((a, b) => a - b);
+      const pitch = nn[Math.floor(nn.length / 2)] || balloonD;
+      const thr = pitch * 1.55;
+      for (let i = 0; i < m; i++) {
+        for (let j = i + 1; j < m; j++) {
+          if (Math.hypot(members[i].x - members[j].x, members[i].y - members[j].y) <= thr) {
+            const a = f(i), b = f(j);
+            if (a !== b) p[a] = b;
+          }
+        }
+      }
+      const buckets = new Map();
+      for (let i = 0; i < m; i++) {
+        const r = f(i);
+        if (!buckets.has(r)) buckets.set(r, []);
+        buckets.get(r).push(members[i]);
+      }
+      buckets.forEach(b => groups.push(b));
+    });
+    const bestByColor = new Map();
+    groups.forEach(g => {
+      const id = g[0].id;
+      if (!bestByColor.has(id) || g.length > bestByColor.get(id).length) bestByColor.set(id, g);
+    });
+    return Array.from(bestByColor.values()).filter(g => g.length >= 2);
+  }
+
+  const api = {
+    rgbToHsv, isWoodOrBasket, isChromeGlint, simpleColorId,
+    FACE_LINK, FACE_SEP, clusterSameColor
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.GokBalloonColor = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);

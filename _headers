@@ -9,5 +9,8 @@
 /board-gate.js
   Cache-Control: no-cache
 
+/balloon-color.js
+  Cache-Control: no-cache
+
 /sw.js
   Cache-Control: no-cache
