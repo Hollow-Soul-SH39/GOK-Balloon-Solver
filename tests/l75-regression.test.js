@@ -21,11 +21,16 @@ const ids = L75_TRUTH.pieces.map(p => p.id);
 assert.deepStrictEqual(ids, ['red', 'yellow', 'blue', 'orange', 'purple', 'teal', 'pink', 'copper']);
 
 L75_TRUTH.pieces.forEach(p => {
-  const pts = p.cells.map((c, i) => ({
-    cx: (c.dq + c.dr / 2) * 20,
-    cy: c.dr * 20 * 0.866
-  }));
-  const cells = hexShapeFromPoints(pts);
+  const pitch = 20, cellW = pitch * (48 / 42);
+  const pts = p.cells.map(c => {
+    const col = c.dq + (c.dr - (c.dr & 1)) / 2;
+    const row = c.dr;
+    return {
+      cx: col * cellW + ((row % 2 === 1) ? cellW / 2 : 0),
+      cy: row * pitch
+    };
+  });
+  const cells = hexShapeFromPoints(pts, 'flat');
   assert.strictEqual(cells.length, p.size, p.id + ' hex fit lost balloons');
 });
 

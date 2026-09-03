@@ -129,16 +129,20 @@ async function wait(page, fn, timeout) {
   assert.ok(/could not read/i.test(junkState.bannerText + junkState.status), junkState.bannerText + ' / ' + junkState.status);
 
   // Carnival L75 regression photo: diamond 43 + 8 hex pieces, no invented 91
+  await page.evaluate(() => {
+    const banner = document.getElementById('scanError');
+    if (banner) { banner.classList.remove('show'); banner.textContent = ''; }
+    const fi = document.getElementById('fileInput');
+    if (fi) fi.value = '';
+  });
   await input.uploadFile(path.join(FIX, 'carnival-l75.png'));
   await wait(page, () => {
-    const status = document.getElementById('status');
-    const banner = document.getElementById('scanError');
+    const status = document.getElementById('status') || {};
     const solved = document.getElementById('solutionSection').classList.contains('visible');
     const n = (window.pieces || []).length;
-    return solved || n >= 5 || (status && /scan found|scan complete|solving/i.test(status.textContent || '')) ||
-      (banner && banner.classList.contains('show'));
+    const txt = (status.textContent || '');
+    return (BOARD_SIZE === 43 && n >= 5) || solved || /scan found|scan complete|solving/i.test(txt);
   }, 20000);
-  await page.waitForTimeout ? page.waitForTimeout(800) : new Promise(r => setTimeout(r, 800));
   const l75 = await page.evaluate(() => ({
     board: BOARD_SIZE,
     layout: currentLayout,
@@ -151,19 +155,24 @@ async function wait(page, fn, timeout) {
   }));
   assert.strictEqual(l75.board, 43, 'L75 honeycomb must stay 43, got ' + l75.board + ' ' + l75.status);
   assert.ok(l75.layout === 'game' || l75.rowMode, 'L75 must use diamond game layout, got ' + l75.layout);
-  assert.ok(l75.pieces.length >= 6, 'L75 should read most tray colors, got ' + JSON.stringify(l75.pieces));
-  assert.ok(Math.abs(l75.total - 43) <= 4, 'L75 tray total should be near 43, got ' + l75.total + ' ' + JSON.stringify(l75.pieces));
+  assert.strictEqual(l75.pieces.length, 8, 'L75 should read 8 tray colors, got ' + JSON.stringify(l75.pieces));
+  assert.strictEqual(l75.total, 43, 'L75 tray total should be 43, got ' + l75.total + ' ' + JSON.stringify(l75.pieces));
   const ids = l75.pieces.map(p => p.id);
   assert.ok(!ids.includes('green') && !ids.includes('silver'), 'L75 has no green/silver, got ' + ids.join(','));
   const copper = l75.pieces.find(p => p.id === 'copper');
-  if (copper) assert.ok(copper.size <= 7, 'copper must not eat the basket, got ' + copper.size);
+  if (copper) assert.ok(copper.size <= 6, 'copper must not eat the basket, got ' + copper.size);
   assert.ok(l75.editor, 'chip editor remains after L75 scan');
-  if (l75.total === 43) {
-    await wait(page, () => document.getElementById('solutionSection').classList.contains('visible'), 20000);
-  }
+  await wait(page, () => document.getElementById('solutionSection').classList.contains('visible'), 20000);
+  const l75solved = await page.evaluate(() => ({
+    filled: gridCells.filter(c => c.color).length,
+    status: document.getElementById('status').textContent
+  }));
+  assert.strictEqual(l75solved.filled, 43, 'L75 clean scan should auto-solve the diamond');
+  assert.ok(/solution found/i.test(l75solved.status), l75solved.status);
 
   // Auto-solve without a second Solve click (editor pieces already matching the board)
   await page.evaluate(() => {
+    document.getElementById('solutionSection').classList.remove('visible');
     applyKnownBoard(43);
     lastHoneyCount = 43;
     lastHoneyCols = 9;
@@ -179,7 +188,10 @@ async function wait(page, fn, timeout) {
     renderPieceList();
     finishScan();
   });
-  await wait(page, () => document.getElementById('solutionSection').classList.contains('visible'), 20000);
+  await wait(page, () => {
+    return document.getElementById('solutionSection').classList.contains('visible') &&
+      gridCells.filter(c => c.color).length === 43;
+  }, 20000);
   const solved = await page.evaluate(() => ({
     visible: document.getElementById('solutionSection').classList.contains('visible'),
     filled: gridCells.filter(c => c.color).length,

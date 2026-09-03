@@ -1061,9 +1061,15 @@ function simpleColorId(r, g, b) {
   return null;
 }
 
+function hexFitMode() {
+  if (currentLayout === 'game') return 'flat';
+  if (dynamicLayout && dynamicLayout.mode === 'rows') return 'flat';
+  return 'pointy';
+}
+
 function hexShapeFromPoints(members) {
   if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.hexShapeFromPoints) {
-    return GokBalloonColor.hexShapeFromPoints(members);
+    return GokBalloonColor.hexShapeFromPoints(members, hexFitMode());
   }
   const n = members.length;
   if (n < 2 || n > 22) return [];
@@ -2302,6 +2308,18 @@ function detectTrayByBunchVote(data, W, H) {
   return out;
 }
 
+function scoreTrayRead(ps) {
+  if (!ps || !ps.length) return 1e9;
+  const tot = ps.reduce((s, p) => s + (p.size || 0), 0);
+  const honey91 = lastHoneyCount >= 58 || lastHoneyCols >= 11;
+  const honey43 = lastHoneyCount >= 28 && lastHoneyCount <= 54 && lastHoneyCols <= 10.8;
+  const target = honey91 ? 91 : (honey43 ? 43 : (Math.abs(tot - 43) <= Math.abs(tot - 91) ? 43 : 91));
+  const near = Math.abs(tot - target);
+  const oversize = ps.filter(p => p.size > 10).length;
+  const ids = new Set(ps.map(p => p.paletteId).filter(Boolean));
+  return near - ps.length * 4 - ids.size * 3 + oversize * 10;
+}
+
 function detectTrayPieces(data, W, H) {
   let bunches = [];
   try { bunches = detectTrayByBunchVote(data, W, H); } catch (e) {
@@ -2313,7 +2331,8 @@ function detectTrayPieces(data, W, H) {
   const totB = bunches.reduce((s, p) => s + p.size, 0);
   try { window.__bunchDebug = bunches.map(p => p.paletteId + ':' + p.size); } catch (_) {}
   const nearB = Math.min(Math.abs(totB - 43), Math.abs(totB - 91), Math.abs(totB - 157));
-  if (bunches.length >= 5) {
+  const bunchCrazy = bunches.some(p => p.size > 10) && lastHoneyCount > 0 && lastHoneyCount <= 54;
+  if (bunches.length >= 5 && nearB <= 8 && !bunchCrazy) {
     try { window.__fromBunch = true; } catch (_) {}
     return bunches;
   }
@@ -2351,9 +2370,8 @@ function detectTrayPieces(data, W, H) {
     }
   });
   const totH = honed.reduce((s, p) => s + p.size, 0);
-  if (honed.length >= 8 && totH >= 36) return honed;
-  if (honed.length >= 5) return honed;
-  if (circled.length >= 5) return circled;
+  const honedOk = honed.length >= 8 && totH >= 36 && scoreTrayRead(honed) <= 8;
+  if (honedOk) return honed;
   const fam = new Array(W * H);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -2508,7 +2526,12 @@ function detectTrayPieces(data, W, H) {
     const bx = b._members.reduce((s, m) => s + m.cx, 0) / b._members.length;
     return ax - bx;
   });
-  return ensureSilver(out, data, W, H);
+  const blob = ensureSilver(out, data, W, H);
+  const cands = [blob, honed, circled, bunches].filter(p => p && p.length >= 5);
+  if (!cands.length) return blob;
+  cands.sort((a, b) => scoreTrayRead(a) - scoreTrayRead(b));
+  try { window.__trayPick = cands[0].map(p => p.paletteId + ':' + p.size); } catch (_) {}
+  return cands[0];
 }
 
 function imgSize(img) {
@@ -2718,11 +2741,7 @@ function collectTrayPieces(img) {
       const { data, W, H } = rasterizeRegion(img, box, 1100, 720);
       const got = detectTrayPieces(data, W, H);
       if (!got.length) return;
-      const tot = got.reduce((s, p) => s + p.size, 0);
-      const near = Math.min(Math.abs(tot - 43), Math.abs(tot - 91), Math.abs(tot - 157));
-      let fromBunch = false;
-      try { fromBunch = !!window.__fromBunch; } catch (_) {}
-      const score = near - got.length * 5 - (fromBunch ? 32 : 0);
+      const score = scoreTrayRead(got);
       if (score < bestScore) { best = got; bestScore = score; }
     } catch (_) {}
   });

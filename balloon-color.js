@@ -127,8 +127,9 @@
     return { q: rq, r: rr };
   }
 
-  /** Fit balloon centers to a pointy-top hex lattice (polyhex, not square tetris). */
-  function hexShapeFromPoints(members) {
+  /** Fit balloon centers to a hex lattice (polyhex, not square tetris).
+   *  mode 'flat' = odd-r / Carnival diamond board; 'pointy' = odd-q column boards. */
+  function hexShapeFromPoints(members, mode) {
     const n = members.length;
     if (n < 2 || n > 22) return [];
     const pts = members.map(m => ({
@@ -150,14 +151,21 @@
     if (!(pitch > 5)) {
       return members.map((_, i) => ({ dq: i, dr: 0 }));
     }
+    const flat = mode === 'flat' || mode === 'game' || mode === 'rows';
     function scoreLattice(size, ox, oy) {
       const cells = [];
       let err = 0;
       const seen = new Map();
       pts.forEach(m => {
         const x = m.x - ox, y = m.y - oy;
-        const qf = (2 / 3) * x / size;
-        const rf = (-1 / 3) * x / size + (Math.sqrt(3) / 3) * y / size;
+        let qf, rf;
+        if (flat) {
+          qf = (Math.sqrt(3) / 3) * x / size - (1 / 3) * y / size;
+          rf = (2 / 3) * y / size;
+        } else {
+          qf = (2 / 3) * x / size;
+          rf = (-1 / 3) * x / size + (Math.sqrt(3) / 3) * y / size;
+        }
         const c = cubeRound(qf, rf);
         err += Math.hypot(qf - c.q, rf - c.r);
         const k = c.q + ',' + c.r;
@@ -168,7 +176,9 @@
       return { err, cells };
     }
     let best = { err: Infinity, cells: null };
-    [pitch, pitch * 0.92, pitch * 1.08, pitch * 0.84, pitch * 1.16].forEach(size => {
+    const hexSize = pitch / Math.sqrt(3);
+    [hexSize, hexSize * 0.92, hexSize * 1.08, hexSize * 0.84, hexSize * 1.16,
+      pitch, pitch * 0.92, pitch * 1.08].forEach(size => {
       if (size < 6) return;
       const stepX = size / 5, stepY = size * 0.866 / 5;
       for (let ox = 0; ox < size * 1.5; ox += stepX) {

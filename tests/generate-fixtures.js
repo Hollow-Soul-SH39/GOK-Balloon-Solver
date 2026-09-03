@@ -103,7 +103,7 @@ function paintHoneycomb(rgba, w, sizes, originX, originY, pitch) {
 
 function paintRowHoneycomb(rgba, w, sizes, originX, originY, pitch) {
   const maxS = Math.max(...sizes);
-  const cellW = pitch * Math.sqrt(3) / 2;
+  const cellW = pitch * (48 / 42);
   const rad = pitch * 0.42;
   sizes.forEach((nw, row) => {
     const start = Math.floor((maxS - nw) / 2);
@@ -117,9 +117,13 @@ function paintRowHoneycomb(rgba, w, sizes, originX, originY, pitch) {
 }
 
 function hexPixel(q, r, ox, oy, pitch) {
+  // Odd-r / same spacing as the in-game diamond board (CELL_W/CELL_H = 48/42).
+  const col = q + (r - (r & 1)) / 2;
+  const row = r;
+  const cellW = pitch * (48 / 42);
   return {
-    x: ox + pitch * (q + r / 2),
-    y: oy + pitch * (Math.sqrt(3) / 2) * r
+    x: ox + col * cellW + ((row % 2 === 1) ? cellW / 2 : 0),
+    y: oy + row * pitch
   };
 }
 
@@ -208,14 +212,14 @@ const W = 720, H = 1280;
 // Carnival Level 75 — upright diamond 43 + 8 hex pieces over wicker/coins/filigree
 const L75_ROWS = [3, 4, 5, 6, 7, 6, 5, 4, 3];
 const L75_PIECES = [
-  { id: 'red', rgb: [220, 45, 40], cells: [{ dq: 0, dr: 0 }, { dq: 0, dr: 1 }, { dq: 0, dr: 2 }, { dq: 1, dr: 0 }, { dq: 1, dr: 1 }, { dq: 1, dr: 2 }] },
-  { id: 'yellow', rgb: [250, 210, 45], cells: [{ dq: 0, dr: 0 }, { dq: 0, dr: 1 }, { dq: 0, dr: 2 }, { dq: 1, dr: 0 }, { dq: 1, dr: 1 }] },
-  { id: 'blue', rgb: [45, 125, 220], cells: [{ dq: 0, dr: 0 }, { dq: 0, dr: 1 }, { dq: 0, dr: 2 }, { dq: 1, dr: 1 }, { dq: 1, dr: 2 }, { dq: -1, dr: 2 }] },
-  { id: 'orange', rgb: [245, 150, 40], cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 3, dr: 0 }] },
-  { id: 'purple', rgb: [150, 90, 200], cells: [{ dq: 0, dr: 0 }, { dq: 0, dr: 1 }, { dq: 0, dr: 2 }, { dq: -1, dr: 1 }, { dq: -1, dr: 2 }, { dq: -1, dr: 3 }] },
-  { id: 'teal', rgb: [50, 185, 180], cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: -1, dr: 0 }, { dq: 0, dr: 1 }, { dq: 0, dr: -1 }] },
-  { id: 'pink', rgb: [240, 145, 175], cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 1, dr: -1 }, { dq: 0, dr: -1 }, { dq: -1, dr: 0 }, { dq: -1, dr: 1 }] },
-  { id: 'copper', rgb: [168, 88, 42], cells: [{ dq: 0, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }, { dq: 1, dr: 2 }, { dq: 2, dr: 2 }] }
+  { id: 'red', rgb: [220, 45, 40], cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: -1, dr: 1 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }] },
+  { id: 'yellow', rgb: [250, 210, 45], cells: [{ dq: 0, dr: 0 }, { dq: -4, dr: 1 }, { dq: -3, dr: 1 }, { dq: -2, dr: 1 }, { dq: -1, dr: 1 }] },
+  { id: 'blue', rgb: [45, 125, 220], cells: [{ dq: 0, dr: 0 }, { dq: -5, dr: 1 }, { dq: -4, dr: 1 }, { dq: -3, dr: 1 }, { dq: -2, dr: 1 }, { dq: -1, dr: 1 }] },
+  { id: 'orange', rgb: [245, 150, 40], cells: [{ dq: 0, dr: 0 }, { dq: -3, dr: 1 }, { dq: -2, dr: 1 }, { dq: -1, dr: 1 }] },
+  { id: 'purple', rgb: [150, 90, 200], cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }, { dq: 2, dr: 1 }] },
+  { id: 'teal', rgb: [50, 185, 180], cells: [{ dq: 0, dr: 0 }, { dq: -3, dr: 1 }, { dq: -2, dr: 1 }, { dq: -1, dr: 1 }, { dq: -4, dr: 2 }] },
+  { id: 'pink', rgb: [240, 145, 175], cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 3, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }, { dq: 2, dr: 1 }] },
+  { id: 'copper', rgb: [168, 88, 42], cells: [{ dq: 0, dr: 0 }, { dq: -1, dr: 1 }, { dq: -4, dr: 2 }, { dq: -3, dr: 2 }, { dq: -2, dr: 2 }] }
 ];
 const L75_TRUTH = {
   board: 43,
