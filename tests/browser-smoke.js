@@ -68,7 +68,7 @@ async function wait(page, fn, timeout) {
   await page.goto('http://127.0.0.1:' + PORT + '/index.html', { waitUntil: 'networkidle0' });
 
   const version = await page.$eval('#scanHint', el => el.textContent);
-  assert.ok(version.includes('v106'), 'expected v106 copy, got ' + version);
+  assert.ok(version.includes('v108'), 'expected v108 copy, got ' + version);
   assert.ok(version.toLowerCase().includes('solves immediately') || version.toLowerCase().includes('clean scan'), version);
 
   const colors = await page.evaluate(() => {
@@ -80,10 +80,12 @@ async function wait(page, fn, timeout) {
       silver: c.simpleColorId(176, 180, 186),
       yellow: c.simpleColorId(250, 210, 45),
       coins: c.simpleColorId(210, 170, 70),
+      cream: c.simpleColorId(220, 210, 190),
       l65: window.GokBoardGate.classifyKnownBoard({ honeyCount: 43, honeyCols: 9, trayTotal: 43 }),
       l101: window.GokBoardGate.classifyKnownBoard({ honeyCount: 91, honeyCols: 13, trayTotal: 91 }),
       l103: window.GokBoardGate.classifyKnownBoard({ honeyCount: 96, honeyCols: 14.7, honeyRows: 11, trayTotal: 91 }),
-      l103n125: window.GokBoardGate.classifyKnownBoard({ honeyCount: 125, honeyCols: 14.0, trayTotal: 91 })
+      l103n125: window.GokBoardGate.classifyKnownBoard({ honeyCount: 125, honeyCols: 14.0, trayTotal: 91 }),
+      l75shape: window.GokBoardGate.classifyHoneyShape({ honeyCount: 43, honeyCols: 7.1, honeyRows: 9.0, trayTotal: 43 })
     };
   });
   assert.strictEqual(colors.copper, 'copper');
@@ -92,10 +94,12 @@ async function wait(page, fn, timeout) {
   assert.strictEqual(colors.silver, 'silver');
   assert.strictEqual(colors.yellow, 'yellow');
   assert.strictEqual(colors.coins, null);
+  assert.strictEqual(colors.cream, null);
   assert.strictEqual(colors.l65, 43);
   assert.strictEqual(colors.l101, 91);
   assert.strictEqual(colors.l103, 91);
   assert.strictEqual(colors.l103n125, 91);
+  assert.ok(colors.l75shape && colors.l75shape.size === 43 && colors.l75shape.shape === 'game', JSON.stringify(colors.l75shape));
 
   const editorOn = await page.$eval('#pieceCanvas', el => !!el);
   assert.ok(editorOn, 'piece editor canvas missing');
@@ -126,8 +130,85 @@ async function wait(page, fn, timeout) {
   assert.ok(junkState.banner && junkState.statusErr, 'junk photo must show a visible error');
   assert.ok(/could not read/i.test(junkState.bannerText + junkState.status), junkState.bannerText + ' / ' + junkState.status);
 
+  // Carnival L75 regression photo: diamond 43 + 8 hex pieces, no invented 91
+  await page.evaluate(() => {
+    const banner = document.getElementById('scanError');
+    if (banner) { banner.classList.remove('show'); banner.textContent = ''; }
+    const fi = document.getElementById('fileInput');
+    if (fi) fi.value = '';
+  });
+  await input.uploadFile(path.join(FIX, 'carnival-l75.png'));
+  await wait(page, () => {
+    const status = document.getElementById('status') || {};
+    const solved = document.getElementById('solutionSection').classList.contains('visible');
+    const n = (window.pieces || []).length;
+    const txt = (status.textContent || '');
+    return (BOARD_SIZE === 43 && n >= 5) || solved || /scan found|scan complete|solving/i.test(txt);
+  }, 20000);
+  const l75 = await page.evaluate(() => ({
+    board: BOARD_SIZE,
+    layout: currentLayout,
+    rowMode: !!(LAYOUTS[currentLayout] && LAYOUTS[currentLayout].mode === 'rows'),
+    pieces: pieces.map(p => ({ id: p.paletteId, size: p.size })),
+    total: pieces.reduce((s, p) => s + (p.size || 0), 0),
+    solved: document.getElementById('solutionSection').classList.contains('visible'),
+    status: document.getElementById('status').textContent,
+    editor: !!document.getElementById('pieceCanvas')
+  }));
+  assert.strictEqual(l75.board, 43, 'L75 honeycomb must stay 43, got ' + l75.board + ' ' + l75.status);
+  assert.ok(l75.layout === 'game' || l75.rowMode, 'L75 must use diamond game layout, got ' + l75.layout);
+  assert.strictEqual(l75.pieces.length, 8, 'L75 should read 8 tray colors, got ' + JSON.stringify(l75.pieces));
+  assert.strictEqual(l75.total, 43, 'L75 tray total should be 43, got ' + l75.total + ' ' + JSON.stringify(l75.pieces));
+  const ids = l75.pieces.map(p => p.id);
+  assert.ok(!ids.includes('green') && !ids.includes('silver'), 'L75 has no green/silver, got ' + ids.join(','));
+  const copper = l75.pieces.find(p => p.id === 'copper');
+  if (copper) assert.ok(copper.size <= 6, 'copper must not eat the basket, got ' + copper.size);
+  assert.ok(l75.editor, 'chip editor remains after L75 scan');
+  await wait(page, () => document.getElementById('solutionSection').classList.contains('visible'), 20000);
+  const l75solved = await page.evaluate(() => ({
+    filled: gridCells.filter(c => c.color).length,
+    status: document.getElementById('status').textContent
+  }));
+  assert.strictEqual(l75solved.filled, 43, 'L75 clean scan should auto-solve the diamond');
+  assert.ok(/solution found/i.test(l75solved.status), l75solved.status);
+
+  // Live L75 fail: 8/43 with phantom silver must open the editor, not auto-solve
+  const dirty = await page.evaluate(() => {
+    document.getElementById('solutionSection').classList.remove('visible');
+    applyKnownBoard(43);
+    lastHoneyCount = 43;
+    lastHoneyCols = 9;
+    lastHoneyRows = 7;
+    pieces = [
+      { color: '#a55', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }, { dq: 2, dr: 0 }, { dq: 2, dr: 1 }, { dq: 3, dr: 0 }], size: 7, paletteId: 'copper' },
+      { color: '#cc0', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }, { dq: 2, dr: 1 }, { dq: 3, dr: 0 }], size: 7, paletteId: 'yellow' },
+      { color: '#c00', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }, { dq: 2, dr: 1 }], size: 6, paletteId: 'red' },
+      { color: '#f9a', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }], size: 5, paletteId: 'pink' },
+      { color: '#aaa', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }], size: 5, paletteId: 'silver' },
+      { color: '#f80', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }], size: 5, paletteId: 'orange' },
+      { color: '#a5f', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }], size: 4, paletteId: 'purple' },
+      { color: '#0cc', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }], size: 4, paletteId: 'teal' }
+    ];
+    renderPieceList();
+    const auto = finishScan();
+    return {
+      auto,
+      solved: document.getElementById('solutionSection').classList.contains('visible'),
+      ids: pieces.map(p => p.paletteId),
+      total: pieces.reduce((s, p) => s + p.size, 0),
+      status: document.getElementById('status').textContent,
+      editor: !!document.getElementById('pieceCanvas')
+    };
+  });
+  assert.strictEqual(dirty.auto, false, 'phantom-silver 43/43 must not auto-solve');
+  assert.strictEqual(dirty.solved, false, 'dirty L75 pack must not show a solution');
+  assert.ok(!dirty.ids.includes('silver'), '43-cell scan must drop cream-slot silver, got ' + dirty.ids.join(','));
+  assert.ok(dirty.editor, 'chip editor stays open for the dirty pack');
+  assert.ok(/fix/i.test(dirty.status), dirty.status);
+
   // Auto-solve without a second Solve click (editor pieces already matching the board)
   await page.evaluate(() => {
+    document.getElementById('solutionSection').classList.remove('visible');
     applyKnownBoard(43);
     lastHoneyCount = 43;
     lastHoneyCols = 9;
@@ -143,7 +224,10 @@ async function wait(page, fn, timeout) {
     renderPieceList();
     finishScan();
   });
-  await wait(page, () => document.getElementById('solutionSection').classList.contains('visible'), 20000);
+  await wait(page, () => {
+    return document.getElementById('solutionSection').classList.contains('visible') &&
+      gridCells.filter(c => c.color).length === 43;
+  }, 20000);
   const solved = await page.evaluate(() => ({
     visible: document.getElementById('solutionSection').classList.contains('visible'),
     filled: gridCells.filter(c => c.color).length,
