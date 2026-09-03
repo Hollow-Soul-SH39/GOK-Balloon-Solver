@@ -1,12 +1,14 @@
 'use strict';
 const assert = require('assert');
-const { classifyKnownBoard, isJunkScan, COLUMN_SIZES } = require('../board-gate.js');
+const { classifyKnownBoard, classifyHoneyShape, isJunkScan, COLUMN_SIZES, GAME_43_ROWS } = require('../board-gate.js');
 
 function sum(arr) { return arr.reduce((s, n) => s + n, 0); }
 
 assert.strictEqual(sum(COLUMN_SIZES[43]), 43);
 assert.strictEqual(sum(COLUMN_SIZES[91]), 91);
 assert.strictEqual(sum(COLUMN_SIZES[157]), 157);
+assert.strictEqual(sum(GAME_43_ROWS), 43);
+assert.strictEqual(GAME_43_ROWS.length, 9);
 assert.strictEqual(COLUMN_SIZES[43].length, 9);
 assert.strictEqual(COLUMN_SIZES[91].length, 13);
 assert.strictEqual(COLUMN_SIZES[157].length, 17);
@@ -35,4 +37,21 @@ assert.strictEqual(isJunkScan({ honeyCount: 4, trayPieces: 1, trayTotal: 3 }), t
 assert.strictEqual(isJunkScan({ honeyCount: 43, trayPieces: 7, trayTotal: 43 }), false);
 assert.strictEqual(isJunkScan({ honeyCount: 91, trayPieces: 10, trayTotal: 91 }), false);
 
-console.log('board-gate tests: ' + cases.length + ' size-gate cases + junk checks passed');
+// Carnival L75 / L65 screenshot: upright diamond, not sideways pointy 43
+const l75 = classifyHoneyShape({ honeyCount: 43, honeyCols: 7.1, honeyRows: 9.0, trayTotal: 43 });
+assert.ok(l75 && l75.size === 43 && l75.shape === 'game', 'L75 diamond must be game 43, got ' + JSON.stringify(l75));
+assert.deepStrictEqual(l75.sizes, GAME_43_ROWS);
+
+const l65noisy = classifyHoneyShape({ honeyCount: 38, honeyCols: 6.8, honeyRows: 8.6, trayTotal: 41 });
+assert.ok(l65noisy && l65noisy.size === 43 && l65noisy.shape === 'game', 'L65 noisy diamond stays game 43');
+
+const pointy43 = classifyHoneyShape({ honeyCount: 43, honeyCols: 9.0, honeyRows: 7.0, trayTotal: 43 });
+assert.ok(pointy43 && pointy43.size === 43 && pointy43.shape === 'pointy', 'true 9-col 43 stays pointy');
+
+const l101shape = classifyHoneyShape({ honeyCount: 91, honeyCols: 13, honeyRows: 10, trayTotal: 91 });
+assert.ok(l101shape && l101shape.size === 91 && l101shape.shape === 'lvl101');
+
+const l103shape = classifyHoneyShape({ honeyCount: 96, honeyCols: 14.7, honeyRows: 11, trayTotal: 91 });
+assert.ok(l103shape && l103shape.size === 91, 'L103 overcount cols still 91');
+
+console.log('board-gate tests: ' + cases.length + ' size-gate cases + junk + honey-shape checks passed');

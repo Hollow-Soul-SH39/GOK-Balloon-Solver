@@ -17,18 +17,24 @@
     return { h, s: max ? d / max : 0, v: max };
   }
 
-  /** Basket wicker / tray wood — overlapping copper hue but flatter tan. */
+  /** Basket wicker / tray wood / balloon-envelope tan — not copper paint. */
   function isWoodOrBasket(r, g, b) {
     const { h, s, v } = rgbToHsv(r, g, b);
     const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-    if (h < 14 || h > 50) return false;
-    if (s < 0.16 || s > 0.62) return false;
-    if (v < 0.26 || v > 0.64) return false;
-    if (b > 115) return false;
+    if (h < 12 || h > 52) return false;
+    if (b > 120) return false;
     const gRatio = g / Math.max(1, r);
-    // Wood: G tracks R; copper paint is more orange (lower G/R, higher chroma).
-    if (gRatio > 0.56 && gRatio < 0.90 && b <= g * 0.92 && chroma < 96) return true;
-    if (chroma < 38 && s < 0.42 && r > 90 && r < 190 && g > 60 && g < 145) return true;
+    // Classic tan wicker: G tracks R, modest chroma.
+    if (h >= 14 && h <= 50 && s >= 0.16 && s <= 0.62 && v >= 0.26 && v <= 0.64) {
+      if (gRatio > 0.56 && gRatio < 0.90 && b <= g * 0.92 && chroma < 96) return true;
+      if (chroma < 38 && s < 0.42 && r > 90 && r < 190 && g > 60 && g < 145) return true;
+    }
+    // Darker / more orange wicker (was leaking into copper on Carnival trays).
+    if (h >= 16 && h <= 42 && v >= 0.28 && v <= 0.68 && s >= 0.35 && s <= 0.78) {
+      if (gRatio >= 0.48 && gRatio <= 0.72 && chroma < 125 && b < 85 && r >= 120 && r <= 175) {
+        if (!(gRatio < 0.52 && chroma >= 90 && s > 0.55)) return true;
+      }
+    }
     return false;
   }
 
@@ -80,7 +86,7 @@
         if (g > r + 18) return 'green';
         return 'lime';
       }
-      if (h >= 82 && h < 155 && g > r + 8 && g > 95 && s > 0.22) return 'green';
+      if (h >= 82 && h < 155 && g > r + 8 && g > 88 && s > 0.18) return 'green';
       if (h >= 148 && h < 196 && g > 75 && b > 70 && g >= r + 4) return 'teal';
       if (h >= 196 && h < 268 && b > r + 8 && b > 90 && v > 0.28 && s > 0.38) return 'blue';
       if (h >= 258 && h < 330 && b > 75 && r > 50) return 'purple';
@@ -94,17 +100,112 @@
       return 'copper';
     }
 
+    // Muted / shadowed green faces (undercount leftover)
+    if (h >= 82 && h < 155 && g > r + 6 && g > 80 && g > b &&
+        s > 0.16 && v > 0.24 && v < 0.92 && chroma > 18) {
+      return 'green';
+    }
+
     // Silver balloons: slightly warm or cool gray, not chrome
-    if (s < 0.32 && v > 0.40 && v < 0.88 && chroma < 52 && mx > 112 && mx < 222 &&
-        Math.abs(r - g) < 30 && Math.abs(g - b) < 34 && Math.min(r, g, b) > 72) {
+    if (s < 0.34 && v > 0.36 && v < 0.90 && chroma < 56 && mx > 105 && mx < 228 &&
+        Math.abs(r - g) < 32 && Math.abs(g - b) < 36 && Math.min(r, g, b) > 68) {
       return 'silver';
     }
     return null;
   }
 
   /** Same-color faces within ~hex-neighbor distance stay one piece; farther bunches split. */
-  const FACE_LINK = 1.72;
-  const FACE_SEP = 0.70;
+  const FACE_LINK = 1.68;
+  const FACE_SEP = 0.72;
+
+  function cubeRound(q, r) {
+    let s = -q - r;
+    let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+    const qd = Math.abs(rq - q), rd = Math.abs(rr - r), sd = Math.abs(rs - s);
+    if (qd > rd && qd > sd) rq = -rr - rs;
+    else if (rd > sd) rr = -rq - rs;
+    return { q: rq, r: rr };
+  }
+
+  /** Fit balloon centers to a pointy-top hex lattice (polyhex, not square tetris). */
+  function hexShapeFromPoints(members) {
+    const n = members.length;
+    if (n < 2 || n > 22) return [];
+    const pts = members.map(m => ({
+      x: m.cx != null ? m.cx : m.x,
+      y: m.cy != null ? m.cy : m.y
+    }));
+    const nns = [];
+    for (let i = 0; i < n; i++) {
+      let best = Infinity;
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+        if (d < best) best = d;
+      }
+      if (best < Infinity) nns.push(best);
+    }
+    nns.sort((a, b) => a - b);
+    const pitch = nns[Math.floor(nns.length / 2)] || 20;
+    if (!(pitch > 5)) {
+      return members.map((_, i) => ({ dq: i, dr: 0 }));
+    }
+    function scoreLattice(size, ox, oy) {
+      const cells = [];
+      let err = 0;
+      const seen = new Map();
+      pts.forEach(m => {
+        const x = m.x - ox, y = m.y - oy;
+        const qf = (2 / 3) * x / size;
+        const rf = (-1 / 3) * x / size + (Math.sqrt(3) / 3) * y / size;
+        const c = cubeRound(qf, rf);
+        err += Math.hypot(qf - c.q, rf - c.r);
+        const k = c.q + ',' + c.r;
+        if (seen.has(k)) err += 1.6;
+        else seen.set(k, 1);
+        cells.push(c);
+      });
+      return { err, cells };
+    }
+    let best = { err: Infinity, cells: null };
+    [pitch, pitch * 0.92, pitch * 1.08, pitch * 0.84, pitch * 1.16].forEach(size => {
+      if (size < 6) return;
+      const stepX = size / 5, stepY = size * 0.866 / 5;
+      for (let ox = 0; ox < size * 1.5; ox += stepX) {
+        for (let oy = 0; oy < size * 1.3; oy += stepY) {
+          const s = scoreLattice(size, ox, oy);
+          if (s.err < best.err) best = s;
+        }
+      }
+    });
+    let cells = best.cells || [];
+    const occ = new Map();
+    const HEXN = [
+      { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
+      { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
+    ];
+    cells = cells.map(c => {
+      const k = c.q + ',' + c.r;
+      if (!occ.has(k)) { occ.set(k, 1); return c; }
+      for (const d of HEXN) {
+        const nk = (c.q + d.q) + ',' + (c.r + d.r);
+        if (!occ.has(nk)) { occ.set(nk, 1); return { q: c.q + d.q, r: c.r + d.r }; }
+      }
+      return c;
+    });
+    const uniq = [];
+    const seen = new Set();
+    cells.forEach(c => {
+      const k = c.q + ',' + c.r;
+      if (seen.has(k)) return;
+      seen.add(k);
+      uniq.push({ dq: c.q, dr: c.r });
+    });
+    if (uniq.length < 2) return [];
+    uniq.sort((a, b) => a.dr - b.dr || a.dq - b.dq);
+    const o0 = uniq[0];
+    return uniq.map(c => ({ dq: c.dq - o0.dq, dr: c.dr - o0.dr }));
+  }
 
   function clusterSameColor(points, balloonD) {
     const n = points.length;
@@ -143,7 +244,7 @@
       }
       nn.sort((a, b) => a - b);
       const pitch = nn[Math.floor(nn.length / 2)] || balloonD;
-      const thr = pitch * 1.55;
+      const thr = pitch * 1.48;
       for (let i = 0; i < m; i++) {
         for (let j = i + 1; j < m; j++) {
           if (Math.hypot(members[i].x - members[j].x, members[i].y - members[j].y) <= thr) {
@@ -170,7 +271,7 @@
 
   const api = {
     rgbToHsv, isWoodOrBasket, isChromeGlint, simpleColorId,
-    FACE_LINK, FACE_SEP, clusterSameColor
+    FACE_LINK, FACE_SEP, clusterSameColor, hexShapeFromPoints, cubeRound
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.GokBalloonColor = api;

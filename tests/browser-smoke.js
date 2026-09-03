@@ -68,7 +68,7 @@ async function wait(page, fn, timeout) {
   await page.goto('http://127.0.0.1:' + PORT + '/index.html', { waitUntil: 'networkidle0' });
 
   const version = await page.$eval('#scanHint', el => el.textContent);
-  assert.ok(version.includes('v106'), 'expected v106 copy, got ' + version);
+  assert.ok(version.includes('v107'), 'expected v107 copy, got ' + version);
   assert.ok(version.toLowerCase().includes('solves immediately') || version.toLowerCase().includes('clean scan'), version);
 
   const colors = await page.evaluate(() => {
@@ -83,7 +83,8 @@ async function wait(page, fn, timeout) {
       l65: window.GokBoardGate.classifyKnownBoard({ honeyCount: 43, honeyCols: 9, trayTotal: 43 }),
       l101: window.GokBoardGate.classifyKnownBoard({ honeyCount: 91, honeyCols: 13, trayTotal: 91 }),
       l103: window.GokBoardGate.classifyKnownBoard({ honeyCount: 96, honeyCols: 14.7, honeyRows: 11, trayTotal: 91 }),
-      l103n125: window.GokBoardGate.classifyKnownBoard({ honeyCount: 125, honeyCols: 14.0, trayTotal: 91 })
+      l103n125: window.GokBoardGate.classifyKnownBoard({ honeyCount: 125, honeyCols: 14.0, trayTotal: 91 }),
+      l75shape: window.GokBoardGate.classifyHoneyShape({ honeyCount: 43, honeyCols: 7.1, honeyRows: 9.0, trayTotal: 43 })
     };
   });
   assert.strictEqual(colors.copper, 'copper');
@@ -96,6 +97,7 @@ async function wait(page, fn, timeout) {
   assert.strictEqual(colors.l101, 91);
   assert.strictEqual(colors.l103, 91);
   assert.strictEqual(colors.l103n125, 91);
+  assert.ok(colors.l75shape && colors.l75shape.size === 43 && colors.l75shape.shape === 'game', JSON.stringify(colors.l75shape));
 
   const editorOn = await page.$eval('#pieceCanvas', el => !!el);
   assert.ok(editorOn, 'piece editor canvas missing');
@@ -125,6 +127,40 @@ async function wait(page, fn, timeout) {
   assert.strictEqual(junkState.board, boardBefore, 'junk photo must not invent a board size');
   assert.ok(junkState.banner && junkState.statusErr, 'junk photo must show a visible error');
   assert.ok(/could not read/i.test(junkState.bannerText + junkState.status), junkState.bannerText + ' / ' + junkState.status);
+
+  // Carnival L75 regression photo: diamond 43 + 8 hex pieces, no invented 91
+  await input.uploadFile(path.join(FIX, 'carnival-l75.png'));
+  await wait(page, () => {
+    const status = document.getElementById('status');
+    const banner = document.getElementById('scanError');
+    const solved = document.getElementById('solutionSection').classList.contains('visible');
+    const n = (window.pieces || []).length;
+    return solved || n >= 5 || (status && /scan found|scan complete|solving/i.test(status.textContent || '')) ||
+      (banner && banner.classList.contains('show'));
+  }, 20000);
+  await page.waitForTimeout ? page.waitForTimeout(800) : new Promise(r => setTimeout(r, 800));
+  const l75 = await page.evaluate(() => ({
+    board: BOARD_SIZE,
+    layout: currentLayout,
+    rowMode: !!(LAYOUTS[currentLayout] && LAYOUTS[currentLayout].mode === 'rows'),
+    pieces: pieces.map(p => ({ id: p.paletteId, size: p.size })),
+    total: pieces.reduce((s, p) => s + (p.size || 0), 0),
+    solved: document.getElementById('solutionSection').classList.contains('visible'),
+    status: document.getElementById('status').textContent,
+    editor: !!document.getElementById('pieceCanvas')
+  }));
+  assert.strictEqual(l75.board, 43, 'L75 honeycomb must stay 43, got ' + l75.board + ' ' + l75.status);
+  assert.ok(l75.layout === 'game' || l75.rowMode, 'L75 must use diamond game layout, got ' + l75.layout);
+  assert.ok(l75.pieces.length >= 6, 'L75 should read most tray colors, got ' + JSON.stringify(l75.pieces));
+  assert.ok(Math.abs(l75.total - 43) <= 4, 'L75 tray total should be near 43, got ' + l75.total + ' ' + JSON.stringify(l75.pieces));
+  const ids = l75.pieces.map(p => p.id);
+  assert.ok(!ids.includes('green') && !ids.includes('silver'), 'L75 has no green/silver, got ' + ids.join(','));
+  const copper = l75.pieces.find(p => p.id === 'copper');
+  if (copper) assert.ok(copper.size <= 7, 'copper must not eat the basket, got ' + copper.size);
+  assert.ok(l75.editor, 'chip editor remains after L75 scan');
+  if (l75.total === 43) {
+    await wait(page, () => document.getElementById('solutionSection').classList.contains('visible'), 20000);
+  }
 
   // Auto-solve without a second Solve click (editor pieces already matching the board)
   await page.evaluate(() => {

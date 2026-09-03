@@ -163,7 +163,7 @@
     <div class="controls">
       <label class="btn secondary">Choose Screenshot<input type="file" id="fileInput" accept="image/*"></label>
     </div>
-    <p class="help" id="scanHint" style="margin:8px 0 0">Upload a screenshot. A clean scan solves immediately — you can still edit pieces if something looks off. <span style="opacity:.55">v106</span></p>
+    <p class="help" id="scanHint" style="margin:8px 0 0">Upload a screenshot. A clean scan solves immediately — you can still edit pieces if something looks off. <span style="opacity:.55">v107</span></p>
     <div id="scanError" class="scan-error-banner" role="alert"></div>
     <canvas id="scanCanvas" width="480" height="160" hidden></canvas>
   </div>
@@ -395,9 +395,16 @@ let boardSizeBeforeScan = 91;
 let lastHoneyBox = null;
 let lastHoneyCount = 0;
 let lastHoneyCols = 0;
+let lastHoneyRows = 0;
 
 /** Auto-size board from balloon count (L65 = 43, L101/L103 = 91). Never invent a hex. */
 function setBoardFromBalloonCount(n) {
+  const shaped = classifyHoneyShapeFromScan({ trayTotal: n, honeyCount: lastHoneyCount, honeyCols: lastHoneyCols });
+  if (shaped && shaped.size) {
+    applyHoneyShape(shaped);
+    setStatus('Board set to ' + BOARD_SIZE + ' cells.');
+    return;
+  }
   const classified = classifyBoardFromScan({ trayTotal: n, honeyCount: lastHoneyCount, honeyCols: lastHoneyCols });
   if (classified && COLUMN_BOARDS[classified]) {
     applyColumnBoard(COLUMN_BOARDS[classified].sizes);
@@ -465,7 +472,27 @@ function setLayout(name) {
   setStatus('Board set to ' + BOARD_SIZE + ' cells.');
 }
 
+function applyHoneyShape(shaped) {
+  if (!shaped || !shaped.size) return;
+  if (shaped.shape === 'game' || (shaped.size === 43 && shaped.mode === 'rows')) {
+    setLayout('game');
+    return;
+  }
+  if (shaped.sizes && shaped.mode === 'cols') {
+    applyColumnBoard(shaped.sizes);
+    return;
+  }
+  if (COLUMN_BOARDS[shaped.size]) applyColumnBoard(COLUMN_BOARDS[shaped.size].sizes);
+}
+
 function applyKnownBoard(n) {
+  if (n === 43) {
+    setLayout('game');
+    drawGrid();
+    if (typeof drawPieceEditor === 'function') try { drawPieceEditor(); } catch (_) {}
+    setStatus('Board set to ' + n + ' cells. Edit pieces, then Solve.');
+    return;
+  }
   const spec = COLUMN_BOARDS[n];
   if (!spec) return;
   applyColumnBoard(spec.sizes);
@@ -653,9 +680,25 @@ function classifyBoardFromScan(extra) {
   if (!gate) return null;
   const input = Object.assign({
     honeyCount: lastHoneyCount,
-    honeyCols: lastHoneyCols
+    honeyCols: lastHoneyCols,
+    honeyRows: lastHoneyRows
   }, extra || {});
   return gate(input);
+}
+
+function classifyHoneyShapeFromScan(extra) {
+  const fn = (typeof GokBoardGate !== 'undefined' && GokBoardGate.classifyHoneyShape)
+    ? GokBoardGate.classifyHoneyShape
+    : null;
+  if (!fn) {
+    const size = classifyBoardFromScan(extra);
+    return size ? { size, shape: size === 43 ? 'game' : (size === 91 ? 'lvl101' : 'cols157') } : null;
+  }
+  return fn(Object.assign({
+    honeyCount: lastHoneyCount,
+    honeyCols: lastHoneyCols,
+    honeyRows: lastHoneyRows
+  }, extra || {}));
 }
 
 function finishScan() {
@@ -1019,6 +1062,9 @@ function simpleColorId(r, g, b) {
 }
 
 function hexShapeFromPoints(members) {
+  if (typeof GokBalloonColor !== 'undefined' && GokBalloonColor.hexShapeFromPoints) {
+    return GokBalloonColor.hexShapeFromPoints(members);
+  }
   const n = members.length;
   if (n < 2 || n > 22) return [];
   const nns = [];
@@ -2123,7 +2169,7 @@ function detectTrayByBunchVote(data, W, H) {
   });
   if (marks.length < 8) return [];
 
-  const link = Math.max(12, typR * 2.55);
+  const link = Math.max(12, typR * ((typeof GokBalloonColor !== 'undefined' && GokBalloonColor.FACE_LINK) || 1.68));
   const parent = marks.map((_, i) => i);
   const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   for (let i = 0; i < marks.length; i++) {
@@ -2738,7 +2784,8 @@ function findHoneycombBounds(img) {
       const v = mx / 255, s = mx ? (mx - mn) / mx : 0;
       const pale = v > 0.68 && s < 0.22 && r > 160 && g > 155 && b > 140;
       const notSky = r + g > b * 2.05 && b < 220;
-      const notGold = !(r > 175 && g > 125 && b < 130 && s > 0.16);
+      const notGold = !(r > 175 && g > 125 && b < 130 && s > 0.16) &&
+        !(r > 185 && g > 140 && b < 145 && (r - b) > 45);
       if (pale && notSky && notGold) mark[y * tw + x] = 1;
     }
   }
@@ -2837,12 +2884,14 @@ function scanHoneycomb() {
   if (!box) {
     lastHoneyCount = 0;
     lastHoneyCols = 0;
+    lastHoneyRows = 0;
     return { sizes: null, total: BOARD_SIZE, detected: 0 };
   }
   const srcW = box.x1 - box.x0, srcH = box.y1 - box.y0;
   if (srcW < 40 || srcH < 40) {
     lastHoneyCount = 0;
     lastHoneyCols = 0;
+    lastHoneyRows = 0;
     return { sizes: null, total: BOARD_SIZE, detected: 0 };
   }
 
@@ -2862,8 +2911,9 @@ function scanHoneycomb() {
     const r = data[p], g = data[p + 1], b = data[p + 2];
     const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
     const v = mx / 255, s = mx ? (mx - mn) / mx : 0;
-    const pale = v > 0.56 && s < 0.36 && r > 138 && g > 132 && b > 115 && (r + g) > b * 1.8;
-    const notGold = !(r > 178 && g > 128 && b < 112 && s > 0.22);
+    const goldish = r > 160 && g > 120 && b < 140 && g < r && b < g && s > 0.18 && (r - b) > 40;
+    const pale = v > 0.58 && s < 0.28 && r > 145 && g > 140 && b > 125 && (r + g) > b * 1.85;
+    const notGold = !goldish && !(r > 178 && g > 128 && b < 112 && s > 0.20);
     const notSky = !(b > r + 16 && b > g + 10 && b > 170);
     if (pale && notGold && notSky) mask[i] = 1;
   }
@@ -2923,10 +2973,15 @@ function scanHoneycomb() {
   // then the old code smashed the board down to 43.
   if (peaks.length >= 28 && peaks.length <= 78) {
     const finer = pickPeaks(Math.max(4, typR * 0.68), 1.50);
-    if (finer.length >= 78 && finer.length <= 115) {
+    const finerSpanX = finer.length
+      ? (Math.max(...finer.map(p => p.x)) - Math.min(...finer.map(p => p.x)))
+      : 0;
+    const finerCols = finerSpanX > 8 ? (finerSpanX / Math.max(6, typR * 1.78) + 1) : 0;
+    // Only step up to a 91-cell read when columns also look like the 13-col board.
+    if (finer.length >= 78 && finer.length <= 115 && finerCols >= 11) {
       peaks = finer;
       typR = Math.max(4, typR * 0.68);
-    } else if (finer.length >= 70 && finer.length > peaks.length + 10) {
+    } else if (finer.length >= 70 && finer.length > peaks.length + 10 && finerCols >= 11) {
       peaks = finer;
       typR = Math.max(4, typR * 0.68);
     }
@@ -2949,16 +3004,24 @@ function scanHoneycomb() {
   const nColsEst = spanX > 8 ? (spanX / colPitch + 1) : 0;
   const nRowsEst = spanY > 8 ? (spanY / Math.max(6, typR * 2.05) + 1) : 0;
   lastHoneyCols = nColsEst;
+  lastHoneyRows = nRowsEst;
 
   let sizes = null;
-  const classified = classifyBoardFromScan({
+  const shaped = classifyHoneyShapeFromScan({
     honeyCount: n,
     honeyCols: nColsEst,
     honeyRows: nRowsEst,
     nColGroups: 0
   });
-  if (classified && COLUMN_BOARDS[classified]) {
-    sizes = COLUMN_BOARDS[classified].sizes.slice();
+  if (shaped && shaped.size === 43 && shaped.shape === 'game') {
+    lastHoneyCount = n;
+    lastHoneyCols = nColsEst || lastHoneyCols;
+    lastHoneyRows = nRowsEst || lastHoneyRows;
+    setLayout('game');
+    return { sizes: shaped.sizes, total: 43, detected: n, shape: 'game' };
+  }
+  if (shaped && shaped.sizes && shaped.mode === 'cols') {
+    sizes = shaped.sizes.slice();
   } else if (n >= 18) {
     const xs = peaks.map(p => p.x).sort((a, b) => a - b);
     const gaps = [];
@@ -3005,6 +3068,7 @@ function scanHoneycomb() {
 
   lastHoneyCount = n;
   lastHoneyCols = nColsEst || lastHoneyCols;
+  lastHoneyRows = nRowsEst || lastHoneyRows;
   if (!sizes) {
     return { sizes: null, total: BOARD_SIZE, detected: n };
   }
@@ -3024,7 +3088,11 @@ function promoteBoardFromPieces() {
     pieces = pieces.filter(p => p.paletteId !== 'green' && p.paletteId !== 'silver' && p.paletteId !== 'lime');
     if (pieces.length !== before) renderPieceList();
   }
-  if (classified && COLUMN_BOARDS[classified] && BOARD_SIZE !== classified) {
+  const shaped = classifyHoneyShapeFromScan({ trayTotal: tot });
+  if (shaped && shaped.size) {
+    const shapeWrong = shaped.shape === 'game' && currentLayout !== 'game';
+    if (BOARD_SIZE !== shaped.size || shapeWrong) applyHoneyShape(shaped);
+  } else if (classified && COLUMN_BOARDS[classified] && BOARD_SIZE !== classified) {
     applyColumnBoard(COLUMN_BOARDS[classified].sizes);
   }
   return BOARD_SIZE;
