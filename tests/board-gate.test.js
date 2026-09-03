@@ -77,6 +77,13 @@ const liveL75ok = trayReadLooksTrusted({
 });
 assert.strictEqual(liveL75ok, true, 'true L75 8-color tray is trusted');
 
+const editorOne = trayReadLooksTrusted({
+  honeyCount: 43, honeyCols: 9, trayTotal: 43, trayPieces: 1,
+  paletteIds: [],
+  pieces: [{ size: 43 }]
+});
+assert.strictEqual(editorOne, true, 'one editor piece covering 43 stays trusted');
+
 const l101sil = trayReadLooksTrusted({
   honeyCount: 91, honeyCols: 13, trayTotal: 91, trayPieces: 10,
   paletteIds: ['red', 'yellow', 'blue', 'green', 'silver'],

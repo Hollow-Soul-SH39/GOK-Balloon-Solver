@@ -99,11 +99,15 @@
       if (ids.indexOf('silver') >= 0 || ids.indexOf('green') >= 0 || ids.indexOf('lime') >= 0) {
         return false;
       }
-      for (let i = 0; i < pieces.length; i++) {
-        const p = pieces[i];
-        if (!p) continue;
-        if ((p.size || 0) > 8) return false;
-        if ((p.id === 'copper' || p.paletteId === 'copper') && (p.size || 0) > 6) return false;
+      // Oversize / basket-leak checks are for a multi-piece tray scan, not
+      // one editor polyhex that already covers the board.
+      if (pieces.length >= 2) {
+        for (let i = 0; i < pieces.length; i++) {
+          const p = pieces[i];
+          if (!p) continue;
+          if ((p.size || 0) > 8) return false;
+          if ((p.id === 'copper' || p.paletteId === 'copper') && (p.size || 0) > 6) return false;
+        }
       }
     }
     return true;
