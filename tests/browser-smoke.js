@@ -68,7 +68,7 @@ async function wait(page, fn, timeout) {
   await page.goto('http://127.0.0.1:' + PORT + '/index.html', { waitUntil: 'networkidle0' });
 
   const version = await page.$eval('#scanHint', el => el.textContent);
-  assert.ok(version.includes('v107'), 'expected v107 copy, got ' + version);
+  assert.ok(version.includes('v108'), 'expected v108 copy, got ' + version);
   assert.ok(version.toLowerCase().includes('solves immediately') || version.toLowerCase().includes('clean scan'), version);
 
   const colors = await page.evaluate(() => {
@@ -80,6 +80,7 @@ async function wait(page, fn, timeout) {
       silver: c.simpleColorId(176, 180, 186),
       yellow: c.simpleColorId(250, 210, 45),
       coins: c.simpleColorId(210, 170, 70),
+      cream: c.simpleColorId(220, 210, 190),
       l65: window.GokBoardGate.classifyKnownBoard({ honeyCount: 43, honeyCols: 9, trayTotal: 43 }),
       l101: window.GokBoardGate.classifyKnownBoard({ honeyCount: 91, honeyCols: 13, trayTotal: 91 }),
       l103: window.GokBoardGate.classifyKnownBoard({ honeyCount: 96, honeyCols: 14.7, honeyRows: 11, trayTotal: 91 }),
@@ -93,6 +94,7 @@ async function wait(page, fn, timeout) {
   assert.strictEqual(colors.silver, 'silver');
   assert.strictEqual(colors.yellow, 'yellow');
   assert.strictEqual(colors.coins, null);
+  assert.strictEqual(colors.cream, null);
   assert.strictEqual(colors.l65, 43);
   assert.strictEqual(colors.l101, 91);
   assert.strictEqual(colors.l103, 91);
@@ -169,6 +171,40 @@ async function wait(page, fn, timeout) {
   }));
   assert.strictEqual(l75solved.filled, 43, 'L75 clean scan should auto-solve the diamond');
   assert.ok(/solution found/i.test(l75solved.status), l75solved.status);
+
+  // Live L75 fail: 8/43 with phantom silver must open the editor, not auto-solve
+  const dirty = await page.evaluate(() => {
+    document.getElementById('solutionSection').classList.remove('visible');
+    applyKnownBoard(43);
+    lastHoneyCount = 43;
+    lastHoneyCols = 9;
+    lastHoneyRows = 7;
+    pieces = [
+      { color: '#a55', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }, { dq: 2, dr: 0 }, { dq: 2, dr: 1 }, { dq: 3, dr: 0 }], size: 7, paletteId: 'copper' },
+      { color: '#cc0', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }, { dq: 2, dr: 1 }, { dq: 3, dr: 0 }], size: 7, paletteId: 'yellow' },
+      { color: '#c00', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }, { dq: 2, dr: 1 }], size: 6, paletteId: 'red' },
+      { color: '#f9a', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }], size: 5, paletteId: 'pink' },
+      { color: '#aaa', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }], size: 5, paletteId: 'silver' },
+      { color: '#f80', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }, { dq: 1, dr: 1 }], size: 5, paletteId: 'orange' },
+      { color: '#a5f', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }], size: 4, paletteId: 'purple' },
+      { color: '#0cc', cells: [{ dq: 0, dr: 0 }, { dq: 1, dr: 0 }, { dq: 2, dr: 0 }, { dq: 0, dr: 1 }], size: 4, paletteId: 'teal' }
+    ];
+    renderPieceList();
+    const auto = finishScan();
+    return {
+      auto,
+      solved: document.getElementById('solutionSection').classList.contains('visible'),
+      ids: pieces.map(p => p.paletteId),
+      total: pieces.reduce((s, p) => s + p.size, 0),
+      status: document.getElementById('status').textContent,
+      editor: !!document.getElementById('pieceCanvas')
+    };
+  });
+  assert.strictEqual(dirty.auto, false, 'phantom-silver 43/43 must not auto-solve');
+  assert.strictEqual(dirty.solved, false, 'dirty L75 pack must not show a solution');
+  assert.ok(!dirty.ids.includes('silver'), '43-cell scan must drop cream-slot silver, got ' + dirty.ids.join(','));
+  assert.ok(dirty.editor, 'chip editor stays open for the dirty pack');
+  assert.ok(/fix/i.test(dirty.status), dirty.status);
 
   // Auto-solve without a second Solve click (editor pieces already matching the board)
   await page.evaluate(() => {

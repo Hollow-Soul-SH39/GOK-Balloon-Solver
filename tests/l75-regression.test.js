@@ -42,6 +42,9 @@ assert.ok(L75_TRUTH.pixelFaces > 400, 'tray balloon-face pixels should be presen
 assert.ok(isWoodOrBasket(160, 85, 45), 'L75 basket wicker must not count as copper');
 assert.strictEqual(simpleColorId(160, 85, 45), null);
 assert.strictEqual(simpleColorId(168, 88, 42), 'copper');
+assert.strictEqual(simpleColorId(220, 210, 190), null, 'cream hex slots must not become silver');
+assert.strictEqual(simpleColorId(232, 226, 214), null, 'ivory hex slots must not become silver');
+assert.strictEqual(simpleColorId(45, 125, 220), 'blue');
 
 const shape = classifyHoneyShape({ honeyCount: 43, honeyCols: 7, honeyRows: 9, trayTotal: 43 });
 assert.strictEqual(shape.shape, 'game');

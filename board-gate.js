@@ -83,7 +83,36 @@
     return false;
   }
 
-  const api = { COLUMN_SIZES, GAME_43_ROWS, classifyKnownBoard, classifyHoneyShape, isJunkScan };
+  /**
+   * A 43/43 count is not enough to auto-solve. L75's live fail invented
+   * silver from cream slots and copper from the basket, then packed wrong.
+   */
+  function trayReadLooksTrusted(input) {
+    const ids = (input && input.paletteIds) || [];
+    const pieces = (input && input.pieces) || [];
+    const size = classifyKnownBoard(input);
+    const honey43 = size === 43 ||
+      ((Number(input && input.honeyCount) || 0) >= 28 &&
+       (Number(input && input.honeyCount) || 0) <= 54 &&
+       (Number(input && input.honeyCols) || 0) <= 10.8);
+    if (honey43) {
+      if (ids.indexOf('silver') >= 0 || ids.indexOf('green') >= 0 || ids.indexOf('lime') >= 0) {
+        return false;
+      }
+      for (let i = 0; i < pieces.length; i++) {
+        const p = pieces[i];
+        if (!p) continue;
+        if ((p.size || 0) > 8) return false;
+        if ((p.id === 'copper' || p.paletteId === 'copper') && (p.size || 0) > 6) return false;
+      }
+    }
+    return true;
+  }
+
+  const api = {
+    COLUMN_SIZES, GAME_43_ROWS, classifyKnownBoard, classifyHoneyShape,
+    isJunkScan, trayReadLooksTrusted
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.GokBoardGate = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

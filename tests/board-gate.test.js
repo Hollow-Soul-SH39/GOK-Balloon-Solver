@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert');
-const { classifyKnownBoard, classifyHoneyShape, isJunkScan, COLUMN_SIZES, GAME_43_ROWS } = require('../board-gate.js');
+const { classifyKnownBoard, classifyHoneyShape, isJunkScan, trayReadLooksTrusted, COLUMN_SIZES, GAME_43_ROWS } = require('../board-gate.js');
 
 function sum(arr) { return arr.reduce((s, n) => s + n, 0); }
 
@@ -54,4 +54,34 @@ assert.ok(l101shape && l101shape.size === 91 && l101shape.shape === 'lvl101');
 const l103shape = classifyHoneyShape({ honeyCount: 96, honeyCols: 14.7, honeyRows: 11, trayTotal: 91 });
 assert.ok(l103shape && l103shape.size === 91, 'L103 overcount cols still 91');
 
-console.log('board-gate tests: ' + cases.length + ' size-gate cases + junk + honey-shape checks passed');
+// Live L75 v106 dump: 8/43 with phantom silver must NOT look trusted
+const liveL75wrong = trayReadLooksTrusted({
+  honeyCount: 43, honeyCols: 9, honeyRows: 7, trayTotal: 43, trayPieces: 8,
+  paletteIds: ['copper', 'yellow', 'red', 'pink', 'silver', 'orange', 'purple', 'teal'],
+  pieces: [
+    { id: 'copper', size: 7 }, { id: 'yellow', size: 7 }, { id: 'red', size: 6 },
+    { id: 'pink', size: 5 }, { id: 'silver', size: 5 }, { id: 'orange', size: 5 },
+    { id: 'purple', size: 4 }, { id: 'teal', size: 4 }
+  ]
+});
+assert.strictEqual(liveL75wrong, false, 'L75 phantom-silver 43/43 must not auto-solve');
+
+const liveL75ok = trayReadLooksTrusted({
+  honeyCount: 43, honeyCols: 7, honeyRows: 9, trayTotal: 43, trayPieces: 8,
+  paletteIds: ['red', 'yellow', 'blue', 'orange', 'purple', 'teal', 'pink', 'copper'],
+  pieces: [
+    { id: 'red', size: 6 }, { id: 'yellow', size: 5 }, { id: 'blue', size: 6 },
+    { id: 'orange', size: 4 }, { id: 'purple', size: 6 }, { id: 'teal', size: 5 },
+    { id: 'pink', size: 6 }, { id: 'copper', size: 5 }
+  ]
+});
+assert.strictEqual(liveL75ok, true, 'true L75 8-color tray is trusted');
+
+const l101sil = trayReadLooksTrusted({
+  honeyCount: 91, honeyCols: 13, trayTotal: 91, trayPieces: 10,
+  paletteIds: ['red', 'yellow', 'blue', 'green', 'silver'],
+  pieces: [{ id: 'green', size: 8 }, { id: 'silver', size: 7 }]
+});
+assert.strictEqual(l101sil, true, '91-cell boards may include green/silver');
+
+console.log('board-gate tests: ' + cases.length + ' size-gate cases + junk + honey-shape + trust checks passed');

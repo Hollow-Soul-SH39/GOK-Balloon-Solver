@@ -48,6 +48,41 @@
     return false;
   }
 
+  /** Empty hex discs: bright warm ivory / cream — not silver paint. */
+  function isPaleCreamSlot(r, g, b) {
+    const { s, v } = rgbToHsv(r, g, b);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const chroma = mx - mn;
+    if (v > 0.72 && s < 0.22 && r > 175 && g > 165 && b > 145 &&
+        r >= g - 4 && g >= b - 6 && (r - b) >= 8 && chroma < 48) return true;
+    if (v > 0.78 && s < 0.18 && r > 190 && g > 180 && b > 160) return true;
+    return false;
+  }
+
+  /** Gold filigree / coin pile — not yellow or copper balloon paint. */
+  function isCoinOrFiligreeGold(r, g, b) {
+    const { h, s, v } = rgbToHsv(r, g, b);
+    if (h < 28 || h > 56) return false;
+    if (r < 170 || g < 120 || b < 50) return false;
+    if (r <= g || g <= b - 4) return false;
+    const gRatio = g / Math.max(1, r);
+    const bRatio = b / Math.max(1, g);
+    if (s >= 0.28 && s <= 0.78 && v >= 0.55 && v <= 0.92 &&
+        gRatio >= 0.68 && gRatio <= 0.92 && bRatio >= 0.32 && bRatio <= 0.62) {
+      return true;
+    }
+    return false;
+  }
+
+  /** Painted envelope / backdrop — not a tray balloon face. */
+  function isBackdropNotFace(r, g, b) {
+    if (isChromeGlint(r, g, b)) return true;
+    if (isWoodOrBasket(r, g, b)) return true;
+    if (isPaleCreamSlot(r, g, b)) return true;
+    if (isCoinOrFiligreeGold(r, g, b)) return true;
+    return false;
+  }
+
   function simpleColorId(r, g, b) {
     const hsv = rgbToHsv(r, g, b);
     const { h, s, v } = hsv;
@@ -55,8 +90,7 @@
     const chroma = mx - Math.min(r, g, b);
     if (v < 0.22) return null;
     if (v > 0.97 && s < 0.18) return null;
-    if (isChromeGlint(r, g, b)) return null;
-    if (isWoodOrBasket(r, g, b)) return null;
+    if (isBackdropNotFace(r, g, b)) return null;
 
     const magentaHue = (h >= 275 || h <= 18);
     if (magentaHue && r > 85 && b > 70) {
@@ -88,7 +122,10 @@
       }
       if (h >= 82 && h < 155 && g > r + 8 && g > 88 && s > 0.18) return 'green';
       if (h >= 148 && h < 196 && g > 75 && b > 70 && g >= r + 4) return 'teal';
-      if (h >= 196 && h < 268 && b > r + 8 && b > 90 && v > 0.28 && s > 0.38) return 'blue';
+      if (h >= 196 && h < 268 && b > r + 8 && b > 90 && v > 0.28) {
+        if (s > 0.38) return 'blue';
+        if (s > 0.28 && b > r + 28 && b > g + 12 && r < 110) return 'blue';
+      }
       if (h >= 258 && h < 330 && b > 75 && r > 50) return 'purple';
     }
 
@@ -106,9 +143,10 @@
       return 'green';
     }
 
-    // Silver balloons: slightly warm or cool gray, not chrome
-    if (s < 0.34 && v > 0.36 && v < 0.90 && chroma < 56 && mx > 105 && mx < 228 &&
-        Math.abs(r - g) < 32 && Math.abs(g - b) < 36 && Math.min(r, g, b) > 68) {
+    // Silver balloons: mid-gray paint, not cream hex discs or chrome
+    if (s < 0.34 && v > 0.36 && v < 0.78 && chroma < 48 && mx > 105 && mx < 210 &&
+        Math.abs(r - g) < 28 && Math.abs(g - b) < 32 && Math.min(r, g, b) > 68) {
+      if (r > g + 6 && g > b + 4) return null; // warm ivory leftover
       return 'silver';
     }
     return null;
@@ -280,7 +318,8 @@
   }
 
   const api = {
-    rgbToHsv, isWoodOrBasket, isChromeGlint, simpleColorId,
+    rgbToHsv, isWoodOrBasket, isChromeGlint, isPaleCreamSlot,
+    isCoinOrFiligreeGold, isBackdropNotFace, simpleColorId,
     FACE_LINK, FACE_SEP, clusterSameColor, hexShapeFromPoints, cubeRound
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

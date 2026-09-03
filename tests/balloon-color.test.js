@@ -1,7 +1,8 @@
 'use strict';
 const assert = require('assert');
 const {
-  simpleColorId, isWoodOrBasket, isChromeGlint, clusterSameColor, FACE_LINK,
+  simpleColorId, isWoodOrBasket, isChromeGlint, isPaleCreamSlot,
+  isCoinOrFiligreeGold, isBackdropNotFace, clusterSameColor, FACE_LINK,
   hexShapeFromPoints
 } = require('../balloon-color.js');
 
@@ -34,6 +35,13 @@ expectId('gold filigree', [200, 155, 70], null);
 assert.ok(isChromeGlint(245, 248, 252), 'bright chrome');
 expectId('UI chrome', [246, 248, 252], null);
 expectId('sky wash', [140, 170, 210], null);
+assert.ok(isPaleCreamSlot(220, 210, 190), 'cream hex slot');
+assert.ok(isPaleCreamSlot(232, 226, 214), 'ivory hex slot');
+assert.ok(isCoinOrFiligreeGold(200, 155, 70), 'filigree gold');
+assert.ok(isBackdropNotFace(220, 210, 190), 'cream is backdrop');
+expectId('cream hex slot', [220, 210, 190], null);
+expectId('ivory hex slot', [232, 226, 214], null);
+expectId('warm cream leftover', [208, 198, 178], null);
 
 // Leftover undercounts
 expectId('muted green', [40, 120, 65], 'green');

@@ -111,7 +111,7 @@ function paintRowHoneycomb(rgba, w, sizes, originX, originY, pitch) {
       const col = start + i;
       const x = originX + col * cellW + ((row % 2 === 1) ? cellW / 2 : 0);
       const y = originY + row * pitch;
-      disk(rgba, w, x, y, rad, 232, 226, 214);
+      disk(rgba, w, x, y, rad, 220, 210, 190);
     }
   });
 }
